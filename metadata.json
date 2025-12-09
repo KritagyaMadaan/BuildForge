@@ -1,0 +1,7 @@
+{
+  "name": "buildforage5",
+  "description": "Unified Campus Platform for Institutions.",
+  "requestFramePermissions": [
+    "microphone"
+  ]
+}

@@ -1,0 +1,103 @@
+<!DOCTYPE html>
+<html lang="en">
+
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+  <title>Squadran BuildForge</title>
+  <link rel="icon"
+    href="data:image/svg+xml,<svg xmlns=%22http://www.w3.org/2000/svg%22 viewBox=%220 0 100 100%22><text y=%22.9em%22 font-size=%2290%22>🚀</text></svg>">
+
+  <!-- PWA Configuration -->
+  <link rel="manifest" href="/manifest.json">
+  <meta name="theme-color" content="#FF725E">
+  <meta name="apple-mobile-web-app-capable" content="yes">
+  <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
+  <meta name="apple-mobile-web-app-title" content="BuildForge">
+  <link rel="apple-touch-icon" href="https://cdn-icons-png.flaticon.com/512/3413/3413535.png">
+
+  <script src="https://cdn.tailwindcss.com"></script>
+  <script>
+    tailwind.config = {
+      theme: {
+        extend: {
+          fontFamily: {
+            sans: ['Nunito', 'sans-serif'],
+          },
+          colors: {
+            primary: '#6C63FF',
+            secondary: '#FF6584',
+            accent: '#43D9AD',
+            warning: '#FFC75F',
+            'brand-orange': '#FF725E',
+            'brand-blue': '#4AA4F2',
+            'brand-dark': '#1E1E2F',
+            'pastel-orange': '#FFF3E0',
+            'pastel-green': '#E8F5E9',
+            'pastel-blue': '#E3F2FD',
+            'pastel-purple': '#F3E5F5',
+          },
+          backgroundImage: {
+            'squiggle': "url(\"data:image/svg+xml,%3Csvg width='200' height='40' viewBox='0 0 200 40' fill='none' xmlns='http://www.w3.org/2000/svg'%3E%3Cpath d='M5 30C30 30 30 10 55 10C80 10 80 30 105 30C130 30 130 10 155 10C180 10 180 30 195 30' stroke='%23FF725E' stroke-width='4' stroke-linecap='round'/%3E%3C/svg%3E\")"
+          },
+          animation: {
+            'float': 'float 6s ease-in-out infinite',
+            'blob': 'blob 7s infinite',
+            'fade-in-up': 'fadeInUp 0.5s ease-out forwards',
+            'text-shimmer': 'textShimmer 3s ease-in-out infinite alternate',
+            'neon-pulse': 'neonPulse 2s ease-in-out infinite',
+          },
+          keyframes: {
+            float: {
+              '0%, 100%': { transform: 'translateY(0)' },
+              '50%': { transform: 'translateY(-20px)' },
+            },
+            blob: {
+              '0%': { transform: 'translate(0px, 0px) scale(1)' },
+              '33%': { transform: 'translate(30px, -50px) scale(1.1)' },
+              '66%': { transform: 'translate(-20px, 20px) scale(0.9)' },
+              '100%': { transform: 'translate(0px, 0px) scale(1)' },
+            },
+            fadeInUp: {
+              '0%': { opacity: '0', transform: 'translateY(20px)' },
+              '100%': { opacity: '1', transform: 'translateY(0)' },
+            },
+            textShimmer: {
+              '0%': { backgroundPosition: '0% 50%' },
+              '100%': { backgroundPosition: '100% 50%' },
+            },
+            neonPulse: {
+              '0%, 100%': { textShadow: '0 0 10px rgba(99, 102, 241, 0.2), 0 0 20px rgba(99, 102, 241, 0.1)' },
+              '50%': { textShadow: '0 0 20px rgba(99, 102, 241, 0.6), 0 0 30px rgba(236, 72, 153, 0.4)' },
+            }
+          }
+        }
+      }
+    }
+  </script>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@400;600;700;800;900&display=swap" rel="stylesheet">
+
+  <link rel="stylesheet" href="/index.css">
+</head>
+
+<body class="bg-gray-50 text-slate-800 antialiased selection:bg-brand-orange selection:text-white overflow-x-hidden">
+  <div id="root"></div>
+  <script>console.log("index.html loaded, about to load index.tsx");</script>
+  <!-- Entry point for Vite -->
+  <script type="module" src="/index.tsx"></script>
+
+  <!-- Service Worker Registration -->
+  <script>
+    if ('serviceWorker' in navigator) {
+      window.addEventListener('load', function () {
+        navigator.serviceWorker.register('/sw.js').then(function (registration) {
+          console.log('ServiceWorker registration successful with scope: ', registration.scope);
+        }, function (err) {
+          console.log('ServiceWorker registration failed: ', err);
+        });
+      });
+    }
+  </script>
+</body>
+
+</html>

@@ -74,29 +74,39 @@ export const authService = {
 
             // Check if user exists in Firestore
             const userDoc = await getDoc(doc(db, 'users', user.uid));
-            let userProfile: UserProfile;
 
             if (userDoc.exists()) {
-                userProfile = userDoc.data() as UserProfile;
+                const userProfile = userDoc.data() as UserProfile;
 
                 // Check if blocked
                 if (userProfile.blocked) {
                     await signOut(auth);
                     return { success: false, error: 'Account is blocked' };
                 }
-            } else {
-                // Create user profile in Firestore
-                userProfile = {
-                    uid: user.uid,
-                    email: user.email || '',
-                    name: user.displayName || 'User',
-                    role: UserRole.FOUNDER, // Default role for Google Sign-in
-                    avatar: user.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(user.displayName || 'User')}`,
-                    blocked: false
-                };
-                await setDoc(doc(db, 'users', user.uid), userProfile);
-            }
 
+                return { success: true, user: userProfile };
+            } else {
+                // Return new user flag instead of auto-creating
+                return { success: true, isNewUser: true, firebaseUser: user };
+            }
+        } catch (error: any) {
+            return { success: false, error: error.message };
+        }
+    },
+
+    // Complete Google Sign Up with detected role
+    async createGoogleUser(firebaseUser: User, role: UserRole) {
+        try {
+            const userProfile: UserProfile = {
+                uid: firebaseUser.uid,
+                email: firebaseUser.email || '',
+                name: firebaseUser.displayName || 'User',
+                role: role,
+                avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(firebaseUser.displayName || 'User')}`,
+                blocked: false
+            };
+
+            await setDoc(doc(db, 'users', firebaseUser.uid), userProfile);
             return { success: true, user: userProfile };
         } catch (error: any) {
             return { success: false, error: error.message };

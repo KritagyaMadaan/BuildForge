@@ -6,7 +6,7 @@ console.log("App.tsx module loaded");
 import { UserRole, Post, ViewType, UserProfile, FeatureType, Feature, Comment, Message } from './types';
 import { db } from './services/firebaseAdapter';
 import { auth } from './services/firebase';
-import { onAuthStateChanged, signOut } from 'firebase/auth';
+import { onAuthStateChanged, signOut, User } from 'firebase/auth';
 import AIChatPanel from './components/AIChatPanel';
 import {
   GraduationCap, Users, Briefcase, FileText, Bell, Settings, LogOut,
@@ -1159,6 +1159,10 @@ const App: React.FC = () => {
   const [activeFeature, setActiveFeature] = useState<Feature | null>(null);
   const [directMessageTarget, setDirectMessageTarget] = useState<string | null>(null);
   const [showRootInput, setShowRootInput] = useState(false);
+
+  // Google Sign Up - Role Selection
+  const [pendingGoogleUser, setPendingGoogleUser] = useState<User | null>(null);
+
   const [submissionType, setSubmissionType] = useState<'UPDATE' | 'FINAL_PROJECT'>('UPDATE');
   const [submissionTargetPostId, setSubmissionTargetPostId] = useState<string | null>(null);
 
@@ -1696,6 +1700,80 @@ const App: React.FC = () => {
     <div className="min-h-screen bg-slate-50 text-slate-900 relative overflow-x-hidden overflow-y-auto selection:bg-brand-orange selection:text-white">
       <CursorBloop />
       <InstallPromptPopup />
+
+      {/* Google Role Selection Modal */}
+      {pendingGoogleUser && (
+        <div className="fixed inset-0 z-[10001] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
+          <div className="bg-white w-full max-w-md rounded-[2rem] p-8 shadow-2xl animate-fade-in-up">
+            <div className="flex justify-between items-center mb-6">
+              <h3 className="text-xl font-black text-slate-800">Welcome!</h3>
+              <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden">
+                {pendingGoogleUser.photoURL ? (
+                  <img src={pendingGoogleUser.photoURL} alt="" className="w-full h-full object-cover" />
+                ) : (
+                  <span className="font-bold text-slate-500">{pendingGoogleUser.displayName?.[0]}</span>
+                )}
+              </div>
+            </div>
+
+            <p className="text-slate-600 font-medium mb-6">
+              Hi <span className="font-bold text-slate-800">{pendingGoogleUser.displayName}</span>! To finish setting up your account, please select how you want to use BuildForge:
+            </p>
+
+            <div className="space-y-4">
+              <button
+                onClick={async () => {
+                  const result = await db.completeGoogleSignup(pendingGoogleUser, UserRole.FOUNDER);
+                  if (result.user) {
+                    setCurrentUser(result.user);
+                    setPendingGoogleUser(null);
+                    setCurrentView(ViewType.SPRINT_HUB);
+                  } else {
+                    alert("Account creation failed: " + result.error);
+                  }
+                }}
+                className="w-full p-4 rounded-2xl border-2 border-slate-100 hover:border-brand-blue hover:bg-blue-50/50 transition-all flex items-center gap-4 text-left group"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-blue-100 text-brand-blue flex items-center justify-center shrink-0 shadow-sm group-hover:scale-110 transition-transform"><Rocket size={24} /></div>
+                <div>
+                  <h3 className="font-black text-slate-800 text-lg">Founder</h3>
+                  <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">I have a startup idea</p>
+                </div>
+              </button>
+
+              <button
+                onClick={async () => {
+                  const result = await db.completeGoogleSignup(pendingGoogleUser, UserRole.DEVELOPER);
+                  if (result.user) {
+                    setCurrentUser(result.user);
+                    setPendingGoogleUser(null);
+                    setCurrentView(ViewType.DEV_MARKET);
+                  } else {
+                    alert("Account creation failed: " + result.error);
+                  }
+                }}
+                className="w-full p-4 rounded-2xl border-2 border-slate-100 hover:border-brand-orange hover:bg-orange-50/50 transition-all flex items-center gap-4 text-left group"
+              >
+                <div className="w-14 h-14 rounded-2xl bg-orange-100 text-brand-orange flex items-center justify-center shrink-0 shadow-sm group-hover:scale-110 transition-transform"><Code2 size={24} /></div>
+                <div>
+                  <h3 className="font-black text-slate-800 text-lg">Developer</h3>
+                  <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">I want to build projects</p>
+                </div>
+              </button>
+            </div>
+
+            <button
+              onClick={async () => {
+                setPendingGoogleUser(null);
+                await signOut(auth);
+              }}
+              className="w-full py-4 text-slate-400 font-bold hover:text-red-500 text-sm mt-2 transition-colors"
+            >
+              Cancel Sign Up
+            </button>
+          </div>
+        </div>
+      )}
       <div className="relative z-10 w-full max-w-7xl mx-auto flex flex-col p-6 md:p-12 gap-16">
         <div className="grid md:grid-cols-2 gap-12 items-center min-h-[80vh]">
           <div className="text-left space-y-8 md:pr-12 animate-fade-in-up">
@@ -1748,6 +1826,8 @@ const App: React.FC = () => {
                           } else {
                             setCurrentView(ViewType.SPRINT_HUB);
                           }
+                        } else if (result.isNewUser && result.firebaseUser) {
+                          setPendingGoogleUser(result.firebaseUser);
                         } else {
                           alert("Google Login Failed: " + result.error);
                         }

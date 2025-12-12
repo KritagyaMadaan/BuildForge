@@ -1,4 +1,5 @@
 // Firebase Adapter - bridges the gap between old mock API and new Firebase API
+import { User } from 'firebase/auth';
 import { authService } from './authService';
 import { dbService } from './dbService';
 import { UserProfile, Post, UserRole, Comment, Message } from '../types';
@@ -123,13 +124,27 @@ export const db = {
         return { user: null, error: result.error || 'User not found' };
     },
 
-    loginWithGoogle: async (): Promise<{ user: UserProfile | null, error?: string }> => {
+    loginWithGoogle: async (): Promise<{ user?: UserProfile | null, isNewUser?: boolean, firebaseUser?: User, error?: string }> => {
         const result = await authService.signInWithGoogle();
+        if (result.success) {
+            if (result.user) {
+                return { user: result.user };
+            }
+            if (result.isNewUser && result.firebaseUser) {
+                return { isNewUser: true, firebaseUser: result.firebaseUser, user: null };
+            }
+        }
+        return { user: null, error: result.error };
+    },
+
+    completeGoogleSignup: async (firebaseUser: User, role: UserRole): Promise<{ user: UserProfile | null, error?: string }> => {
+        const result = await authService.createGoogleUser(firebaseUser, role);
         if (result.success && result.user) {
             return { user: result.user };
         }
         return { user: null, error: result.error };
     },
+
 
     updateUser: async (uid: string, data: Partial<UserProfile>): Promise<UserProfile | null> => {
         await dbService.updateUser(uid, data);

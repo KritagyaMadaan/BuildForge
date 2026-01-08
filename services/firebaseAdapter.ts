@@ -240,13 +240,13 @@ export const db = {
     // ===== POST OPERATIONS =====
 
     getPosts: async (type: string, requesterRole?: UserRole, requesterId?: string): Promise<Post[]> => {
-        // For IDEA_SUBMISSION type, show VERIFIED, PENDING, and REJECTED posts
-        // This allows founders to see their own pending and rejected ideas
-        if (type === 'IDEA_SUBMISSION') {
+        // For IDEA_SUBMISSION, DELIVERY, and SPRINT_UPDATE types, show all statuses
+        // This allows founders to see their own pending ideas and ensures updates are always visible
+        if (type === 'IDEA_SUBMISSION' || type === 'DELIVERY' || type === 'SPRINT_UPDATE') {
             const verifiedPosts = await dbService.getPosts(type, 'VERIFIED');
             const pendingPosts = await dbService.getPosts(type, 'PENDING');
             const rejectedPosts = await dbService.getPosts(type, 'REJECTED');
-            // Combine and return all idea submissions
+            // Combine and return all submissions
             return [...verifiedPosts, ...pendingPosts, ...rejectedPosts];
         }
 
@@ -256,7 +256,9 @@ export const db = {
     },
 
     getPendingPosts: async (): Promise<Post[]> => {
-        return await dbService.getPosts(undefined, 'PENDING');
+        const allPending = await dbService.getPosts(undefined, 'PENDING');
+        // Exclude SPRINT_UPDATE posts since they're auto-verified
+        return allPending.filter(p => p.type !== 'SPRINT_UPDATE');
     },
 
     getUserPosts: async (userId: string): Promise<Post[]> => {
@@ -264,10 +266,10 @@ export const db = {
         return allPosts.filter(p => p.authorId === userId);
     },
 
-    createPost: async (post: Omit<Post, 'id' | 'timestamp' | 'likes' | 'comments' | 'status' | 'applicants' | 'team'>): Promise<void> => {
+    createPost: async (post: Omit<Post, 'id' | 'timestamp' | 'likes' | 'comments' | 'applicants' | 'team'>): Promise<void> => {
         const postWithStatus = {
             ...post,
-            status: 'PENDING' as const,
+            status: post.status || 'PENDING',
             applicants: [],
             team: []
         };

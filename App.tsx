@@ -915,15 +915,16 @@ const AdminDashboard: React.FC<{ currentUser: UserProfile }> = ({ currentUser })
   const [assignModalPostId, setAssignModalPostId] = useState<string | null>(null);
   const [selectedDevIds, setSelectedDevIds] = useState<string[]>([]);
 
+  const loadData = async () => {
+    const pending = await db.getPendingPosts();
+    const users = await db.adminGetAllUsers();
+    const devs = await db.getDevelopers();
+    setPendingPosts(pending);
+    setAllUsers(users);
+    setDevelopers(devs);
+  };
+
   useEffect(() => {
-    const loadData = async () => {
-      const pending = await db.getPendingPosts();
-      const users = await db.adminGetAllUsers();
-      const devs = await db.getDevelopers();
-      setPendingPosts(pending);
-      setAllUsers(users);
-      setDevelopers(devs);
-    };
     loadData();
   }, []);
 
@@ -1003,9 +1004,12 @@ const AdminDashboard: React.FC<{ currentUser: UserProfile }> = ({ currentUser })
           <Shield className="text-brand-orange" />
           {currentUser.role === UserRole.SUPER_ADMIN ? 'Super Admin Control' : 'Platform Lead Dashboard'}
         </h2>
-        <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-100 flex">
-          <button onClick={() => setViewMode('IDEAS')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${viewMode === 'IDEAS' ? 'bg-brand-dark text-white' : 'text-slate-500 hover:bg-slate-50'}`}>Pending Ideas</button>
-          <button onClick={() => setViewMode('USERS')} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${viewMode === 'USERS' ? 'bg-brand-dark text-white' : 'text-slate-500 hover:bg-slate-50'}`}>Board/Deboard Users</button>
+        <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-100 flex gap-1">
+          <button onClick={() => { setViewMode('IDEAS'); loadData(); }} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${viewMode === 'IDEAS' ? 'bg-brand-dark text-white' : 'text-slate-500 hover:bg-slate-50'}`}>Pending Ideas</button>
+          <button onClick={() => { setViewMode('USERS'); loadData(); }} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${viewMode === 'USERS' ? 'bg-brand-dark text-white' : 'text-slate-500 hover:bg-slate-50'}`}>Board/Deboard Users</button>
+          <button onClick={loadData} className="px-4 py-2 rounded-lg text-xs font-bold text-brand-blue hover:bg-blue-50 transition-colors flex items-center gap-1 border border-blue-100">
+            <RefreshCcw size={14} /> Refresh
+          </button>
         </div>
       </div>
 
@@ -1398,8 +1402,12 @@ const App: React.FC = () => {
 
     let type: any = 'SPRINT_UPDATE';
 
-    // Explicitly handle submission types first (overrides view defaults)
-    if (submissionType === 'UPDATE') {
+    // prioritize IDEA_SUBMISSION when checked
+    if (currentView === ViewType.SPRINT_HUB && (form.elements.namedItem('isIdea') as HTMLInputElement)?.checked) {
+      type = 'IDEA_SUBMISSION';
+    }
+    // Explicitly handle submission types (overrides view defaults)
+    else if (submissionType === 'UPDATE') {
       type = 'SPRINT_UPDATE';
     } else if (submissionType === 'FINAL_PROJECT') {
       type = 'DELIVERY';
@@ -1407,8 +1415,6 @@ const App: React.FC = () => {
       type = 'OPEN_ROLE';
     } else if (currentView === ViewType.LAUNCHPAD) {
       type = 'DELIVERY';
-    } else if (currentView === ViewType.SPRINT_HUB && (form.elements.namedItem('isIdea') as HTMLInputElement)?.checked) {
-      type = 'IDEA_SUBMISSION';
     }
 
     let jobData: any = {};

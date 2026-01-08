@@ -13,6 +13,7 @@ export enum ViewType {
   SPRINT_HUB = 'SPRINT_HUB', // Step 6: Project Dashboard
   DEV_MARKET = 'DEV_MARKET', // Step 4: Developers Apply
   LAUNCHPAD = 'LAUNCHPAD', // Step 8: Project Delivery
+  UPDATES = 'UPDATES', // New Updates Section
   NETWORKING = 'NETWORKING',
   MESSAGES = 'MESSAGES',
   ADMIN_DASHBOARD = 'ADMIN_DASHBOARD',
@@ -116,4 +117,10 @@ export interface Post {
   schemaImage?: string; // Founder-specified schema/architecture diagram
   githubUrl?: string; // Developer-submitted GitHub URL
   liveDemoUrl?: string; // Developer-submitted Live Demo URL
+
+  // Targeted Updates
+  projectId?: string; // Linked Project ID
+  projectTitle?: string; // Linked Project Title
+  projectTeam?: string[]; // Team members of the linked project
+  projectAuthorId?: string; // Founder of the linked project
 }

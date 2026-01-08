@@ -395,6 +395,14 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
         </div>
       </div>
 
+      {/* Show linked project for updates */}
+      {post.type === 'SPRINT_UPDATE' && post.projectTitle && (
+        <div className="mb-3 px-3 py-2 bg-blue-50 border border-blue-200 rounded-xl">
+          <p className="text-xs font-bold text-blue-600 uppercase tracking-wide mb-1">Update for Project</p>
+          <p className="text-sm font-bold text-slate-800">{post.projectTitle}</p>
+        </div>
+      )}
+
       {post.type !== 'SPRINT_UPDATE' && (
         <div className="mb-3">
           <h4 className="text-xl font-black text-slate-900">{post.title}</h4>
@@ -454,7 +462,12 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
           <div className="flex items-center justify-between mb-2">
             <h5 className="text-xs font-bold text-slate-400 uppercase tracking-wider flex items-center gap-1"><Users size={12} /> Build Team</h5>
             {canManage && (
-              <button onClick={() => setShowAssignPanel(!showAssignPanel)} className="text-xs font-bold text-brand-blue hover:underline">
+              <button onClick={() => {
+                if (!showAssignPanel && onRefreshDevelopers) {
+                  onRefreshDevelopers();
+                }
+                setShowAssignPanel(!showAssignPanel);
+              }} className="text-xs font-bold text-brand-blue hover:underline">
                 {showAssignPanel ? 'Done' : 'Manage Team'}
               </button>
             )}
@@ -542,6 +555,11 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
         <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-2 text-slate-400 hover:text-brand-blue transition-colors font-bold text-sm">
           <MessageCircle size={18} /> {post.comments.length} Comments
         </button>
+        {isIdea && onSubmission && currentUser.role === UserRole.DEVELOPER && post.team?.includes(currentUser.uid) && (
+          <button onClick={() => onSubmission('UPDATE', post.id)} className="flex items-center gap-2 text-slate-400 hover:text-green-600 transition-colors font-bold text-sm">
+            <Plus size={18} /> Post Update
+          </button>
+        )}
         <button onClick={handleShare} className="flex items-center gap-2 text-slate-400 hover:text-brand-orange transition-colors font-bold text-sm ml-auto">
           <Share2 size={18} /> Share
         </button>
@@ -1212,36 +1230,63 @@ const App: React.FC = () => {
       console.log('DEV_MARKET: Current user UID:', uid, 'Type:', typeof uid);
 
       const assignedPosts = allIdeas.filter(post => {
-        // Safe check for team array
         const team = post.team || [];
-
-        // Detailed log for each post
-        console.log(`Checking Post "${post.title}" (ID: ${post.id})`);
-        // console.log(`- Team JSON:`, JSON.stringify(team));
-
-        // Robust check: Handle string/number, whitespace, possible object wrapping
-        const isAssigned = team.some(member => {
-          // Handle if member is object (legacy data safety)
-          const memberId = (typeof member === 'object' && member !== null) ? (member as any).uid || (member as any).id : member;
-
-          // Compare as strings, trimmed
-          const match = String(memberId).trim() === String(uid).trim();
-          // if (match) console.log(`  -> Match found! Member: ${JSON.stringify(member)} matches UID: ${uid}`);
-          return match;
-        });
-
-        return isAssigned;
+        return team.includes(uid || '');
       });
-      console.log('DEV_MARKET: Final Assigned posts count:', assignedPosts.length);
+      console.log('DEV_MARKET: Assigned posts count:', assignedPosts.length);
       setPosts(assignedPosts);
     }
     else if (currentView === ViewType.LAUNCHPAD) {
       const posts = await db.getPosts('DELIVERY');
-      setPosts(posts);
+
+      // RESTRICT DEVELOPER VIEW: Only show projects they worked on
+      if (role === UserRole.DEVELOPER && uid) {
+        const myPosts = posts.filter(p => {
+          const team = p.team || [];
+          return team.includes(uid) || p.authorId === uid;
+        });
+        setPosts(myPosts);
+      }
+      // RESTRICT FOUNDER VIEW: Only show projects they submitted
+      else if (role === UserRole.FOUNDER && uid) {
+        const myPosts = posts.filter(p => p.authorId === uid);
+        setPosts(myPosts);
+      } else {
+        setPosts(posts);
+      }
     }
-  };
+    else if (currentView === ViewType.UPDATES) {
+      const allUpdates = await db.getPosts('SPRINT_UPDATE');
+      console.log('UPDATES VIEW: Total updates fetched:', allUpdates.length);
+      console.log('UPDATES VIEW: Current user role:', role, 'uid:', uid);
+      console.log('UPDATES VIEW: Sample update:', allUpdates[0]);
+
+      if (role === UserRole.LEAD || role === UserRole.SUPER_ADMIN) {
+        console.log('UPDATES VIEW: Showing all updates (Lead/Admin)');
+        setPosts(allUpdates);
+      } else if (role === UserRole.FOUNDER && uid) {
+        const myUpdates = allUpdates.filter(p =>
+          p.projectAuthorId === uid || p.authorId === uid
+        );
+        console.log('UPDATES VIEW: Founder filtered updates:', myUpdates.length);
+        setPosts(myUpdates);
+      } else if (role === UserRole.DEVELOPER && uid) {
+        const myUpdates = allUpdates.filter(p =>
+          (p.projectTeam && p.projectTeam.includes(uid)) || p.authorId === uid
+        );
+        console.log('UPDATES VIEW: Developer filtered updates:', myUpdates.length);
+        setPosts(myUpdates);
+      } else {
+        console.log('UPDATES VIEW: No role match, showing empty');
+        setPosts([]);
+      }
+    }
+  }
+
 
   useEffect(() => {
+    // Prevent UI flash/glitch by clearing posts immediately when view changes
+    setPosts([]);
     refreshPosts();
   }, [currentView, currentUser]);
 
@@ -1353,8 +1398,10 @@ const App: React.FC = () => {
 
     let type: any = 'SPRINT_UPDATE';
 
-    // Explicitly handle Final Project first (overrides view defaults)
-    if (submissionType === 'FINAL_PROJECT') {
+    // Explicitly handle submission types first (overrides view defaults)
+    if (submissionType === 'UPDATE') {
+      type = 'SPRINT_UPDATE';
+    } else if (submissionType === 'FINAL_PROJECT') {
       type = 'DELIVERY';
     } else if (currentView === ViewType.DEV_MARKET) {
       type = 'OPEN_ROLE';
@@ -1406,6 +1453,17 @@ const App: React.FC = () => {
       }
     }
 
+    // For SPRINT_UPDATE, link to the project
+    if (type === 'SPRINT_UPDATE' && submissionTargetPostId) {
+      const targetProject = posts.find(p => p.id === submissionTargetPostId);
+      if (targetProject) {
+        jobData.projectId = targetProject.id;
+        jobData.projectTitle = targetProject.title;
+        jobData.projectAuthorId = targetProject.authorId;
+        jobData.projectTeam = targetProject.team || [];
+      }
+    }
+
     // Wait for the post to be created before continuing
     const postData = {
       authorId: currentUser.uid,
@@ -1413,8 +1471,14 @@ const App: React.FC = () => {
       authorRole: currentUser.role,
       content,
       type,
+      status: type === 'SPRINT_UPDATE' ? 'VERIFIED' : 'PENDING',
       ...jobData
     };
+
+    console.log('DEBUG: Creating post with data:', postData);
+    if (type === 'SPRINT_UPDATE') {
+      console.log('DEBUG: SPRINT_UPDATE - projectId:', postData.projectId, 'projectTeam:', postData.projectTeam, 'projectAuthorId:', postData.projectAuthorId);
+    }
 
     try {
       if (submissionType === 'FINAL_PROJECT' && submissionTargetPostId) {
@@ -1513,6 +1577,7 @@ const App: React.FC = () => {
             )}
 
             <button onClick={() => setCurrentView(ViewType.LAUNCHPAD)} className={`w-full flex items-center gap-3 p-4 rounded-xl font-bold transition-colors ${currentView === ViewType.LAUNCHPAD ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:bg-slate-50'}`}><Rocket size={20} /> Launchpad</button>
+            <button onClick={() => setCurrentView(ViewType.UPDATES)} className={`w-full flex items-center gap-3 p-4 rounded-xl font-bold transition-colors ${currentView === ViewType.UPDATES ? 'bg-slate-100 text-slate-900' : 'text-slate-500 hover:bg-slate-50'}`}><Bell size={20} /> Updates</button>
 
             {/* Connect Section - Visible to ALL users now */}
             <div className="pt-4 pb-2 pl-4 text-xs font-bold text-slate-400 uppercase">Connect</div>
@@ -1565,7 +1630,7 @@ const App: React.FC = () => {
                     Squadran BuildForge
                   </h1>
                   <p className="text-slate-400 font-bold text-sm">
-                    {currentView === ViewType.SPRINT_HUB ? 'Project Dashboard (Step 6)' : currentView === ViewType.DEV_MARKET ? 'My Assignments' : 'Project Delivery (Step 8)'}
+                    {currentView === ViewType.SPRINT_HUB ? 'Project Dashboard (Step 6)' : currentView === ViewType.DEV_MARKET ? 'My Assignments' : currentView === ViewType.UPDATES ? 'Updates' : 'Project Delivery (Step 8)'}
                   </p>
                 </div>
                 {(currentView === ViewType.SPRINT_HUB || currentView === ViewType.LAUNCHPAD) && (
@@ -1694,6 +1759,7 @@ const App: React.FC = () => {
       </div>
     );
   }
+
 
   // --- LANDING PAGE / REGISTRATION (Unified) ---
   return (
@@ -2016,8 +2082,9 @@ const App: React.FC = () => {
         </div>
 
       </div>
-    </div >
+    </div>
   );
+
 };
 
 export default App;

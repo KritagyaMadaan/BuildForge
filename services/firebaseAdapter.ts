@@ -88,7 +88,7 @@ export const db = {
     },
 
     loginLead: async (email: string, accessKey: string): Promise<{ user: UserProfile | null, error?: string }> => {
-        if (accessKey === 'admin') {
+        if (accessKey === 'Blue$Falcon_47!Code') {
             // Salt the key to satisfy Firebase's 6-char min password requirement
             const secureKey = accessKey + '_secure_key';
 
@@ -388,3 +388,4 @@ export const db = {
         });
     }
 };
+

@@ -61,6 +61,7 @@ export const dbService = {
             ...postData,
             timestamp: serverTimestamp(),
             likes: 0,
+            likedBy: [],
             comments: [],
             status: 'PENDING',
             applicants: [],
@@ -154,13 +155,30 @@ export const dbService = {
         }
     },
 
-    async toggleLike(postId: string) {
+    async toggleLike(postId: string, userId: string) {
         const postRef = doc(db, 'posts', postId);
         const postDoc = await getDoc(postRef);
 
         if (postDoc.exists()) {
-            const currentLikes = postDoc.data().likes || 0;
-            await updateDoc(postRef, { likes: currentLikes + 1 });
+            const data = postDoc.data();
+            const likedBy = data.likedBy || [];
+            let currentLikes = data.likes || 0;
+
+            if (likedBy.includes(userId)) {
+                // Unlike: Remove user from list and decrement count
+                const newLikedBy = likedBy.filter((id: string) => id !== userId);
+                await updateDoc(postRef, {
+                    likedBy: newLikedBy,
+                    likes: Math.max(0, currentLikes - 1)
+                });
+            } else {
+                // Like: Add user to list and increment count
+                likedBy.push(userId);
+                await updateDoc(postRef, {
+                    likedBy: likedBy,
+                    likes: currentLikes + 1
+                });
+            }
         }
     },
 

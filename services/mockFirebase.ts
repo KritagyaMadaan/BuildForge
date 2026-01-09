@@ -66,7 +66,7 @@ const INITIAL_POSTS: Post[] = [
       status: 'READY'
     },
     applicants: ['dev_01'],
-    team: ['dev_01'] 
+    team: ['dev_01']
   }
 ];
 
@@ -97,16 +97,31 @@ const setStorage = <T>(key: string, data: T): void => {
 
 export const db = {
   // --- Squadran Super Admin ---
-  loginSuperAdmin: (password: string): { success: boolean, user?: UserProfile } => {
-    if (password === 'squadran_root') {
+  // --- Squadran Super Admin ---
+  loginSuperAdmin: async (password: string): Promise<{ success: boolean, user?: UserProfile }> => {
+    try {
+      const encoder = new TextEncoder();
+      const data = encoder.encode(password);
+      const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+      const hashArray = Array.from(new Uint8Array(hashBuffer));
+      const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
+
+      // Compare with hash from environment variable
+      // Default to empty string if not set to prevent accidental access
+      const targetHash = import.meta.env.VITE_ADMIN_KEY_HASH || '';
+
+      if (hashHex === targetHash && targetHash !== '') {
         const users = getStorage<UserProfile[]>(KEYS.USERS, INITIAL_USERS);
         let admin = users.find(u => u.role === UserRole.SUPER_ADMIN);
         if (!admin) {
-            admin = INITIAL_USERS[0];
-            users.push(admin);
-            setStorage(KEYS.USERS, users);
+          admin = INITIAL_USERS[0];
+          users.push(admin);
+          setStorage(KEYS.USERS, users);
         }
         return { success: true, user: admin };
+      }
+    } catch (e) {
+      console.error("Auth Error", e);
     }
     return { success: false };
   },
@@ -149,39 +164,39 @@ export const db = {
 
   // LEAD LOGIN / ACCESS
   loginLead: (email: string, accessKey: string): { user: UserProfile | null, error?: string } => {
-     const users = getStorage<UserProfile[]>(KEYS.USERS, INITIAL_USERS);
-     const existingUser = users.find(u => u.email === email && u.role === UserRole.LEAD);
+    const users = getStorage<UserProfile[]>(KEYS.USERS, INITIAL_USERS);
+    const existingUser = users.find(u => u.email === email && u.role === UserRole.LEAD);
 
-     // Check master key
-     if (accessKey === 'admin') {
-         if (existingUser) {
-             return { user: existingUser };
-         } else {
-             // Create new Lead if doesn't exist but key is valid
-             const newLead: UserProfile = {
-                 uid: `lead_${Date.now()}`,
-                 name: email.split('@')[0] || 'Lead',
-                 email,
-                 role: UserRole.LEAD,
-                 avatar: `https://ui-avatars.com/api/?name=Lead`,
-                 blocked: false
-             };
-             users.push(newLead);
-             setStorage(KEYS.USERS, users);
-             return { user: newLead };
-         }
-     }
-     return { user: null, error: "Invalid Access Key" };
+    // Check master key
+    if (accessKey === 'admin') {
+      if (existingUser) {
+        return { user: existingUser };
+      } else {
+        // Create new Lead if doesn't exist but key is valid
+        const newLead: UserProfile = {
+          uid: `lead_${Date.now()}`,
+          name: email.split('@')[0] || 'Lead',
+          email,
+          role: UserRole.LEAD,
+          avatar: `https://ui-avatars.com/api/?name=Lead`,
+          blocked: false
+        };
+        users.push(newLead);
+        setStorage(KEYS.USERS, users);
+        return { user: newLead };
+      }
+    }
+    return { user: null, error: "Invalid Access Key" };
   },
 
   // Generic Login for Founder/Dev
   loginUserByEmail: (email: string): { user: UserProfile | null, error?: string } => {
     const users = getStorage<UserProfile[]>(KEYS.USERS, INITIAL_USERS);
     const user = users.find(u => u.email === email);
-    
+
     if (user) {
-        if (user.blocked) return { user: null, error: "Access Denied: Account Deboarded/Blocked." };
-        return { user };
+      if (user.blocked) return { user: null, error: "Access Denied: Account Deboarded/Blocked." };
+      return { user };
     }
     return { user: null, error: "User not found. Please Register." };
   },
@@ -227,7 +242,7 @@ export const db = {
 
     // 0. Super Admin & Leads see everyone
     if (currentUser.role === UserRole.SUPER_ADMIN || currentUser.role === UserRole.LEAD) {
-        return users.filter(u => u.uid !== currentUser.uid);
+      return users.filter(u => u.uid !== currentUser.uid);
     }
 
     // Always include Leads/Admins for communication
@@ -236,24 +251,24 @@ export const db = {
 
     // 1. Founders see assigned Developers
     if (currentUser.role === UserRole.FOUNDER) {
-        const myPosts = posts.filter(p => p.authorId === currentUser.uid);
-        myPosts.forEach(post => {
-            if (post.team && post.team.length > 0) {
-                post.team.forEach(devId => {
-                    const dev = users.find(u => u.uid === devId && !u.blocked);
-                    if (dev) connectedUsers.add(dev);
-                });
-            }
-        });
+      const myPosts = posts.filter(p => p.authorId === currentUser.uid);
+      myPosts.forEach(post => {
+        if (post.team && post.team.length > 0) {
+          post.team.forEach(devId => {
+            const dev = users.find(u => u.uid === devId && !u.blocked);
+            if (dev) connectedUsers.add(dev);
+          });
+        }
+      });
     }
 
     // 2. Developers see Founders of projects they are assigned to
     if (currentUser.role === UserRole.DEVELOPER) {
-        const assignedPosts = posts.filter(p => p.team && p.team.includes(currentUser.uid));
-        assignedPosts.forEach(post => {
-            const founder = users.find(u => u.uid === post.authorId && !u.blocked);
-            if (founder) connectedUsers.add(founder);
-        });
+      const assignedPosts = posts.filter(p => p.team && p.team.includes(currentUser.uid));
+      assignedPosts.forEach(post => {
+        const founder = users.find(u => u.uid === post.authorId && !u.blocked);
+        if (founder) connectedUsers.add(founder);
+      });
     }
 
     return Array.from(connectedUsers).filter(u => u.uid !== currentUser.uid);
@@ -266,7 +281,7 @@ export const db = {
 
   getPosts: (type: string, requesterRole?: UserRole, requesterId?: string): Post[] => {
     const posts = getStorage<Post[]>(KEYS.POSTS, INITIAL_POSTS);
-    
+
     return posts.filter(p => {
       // 1. Role Check
       if (requesterRole === UserRole.LEAD || requesterRole === UserRole.SUPER_ADMIN) {
@@ -274,17 +289,17 @@ export const db = {
       }
 
       if (requesterRole === UserRole.FOUNDER) {
-          if (p.type === 'IDEA_SUBMISSION') {
-              return p.authorId === requesterId; // Only own ideas
-          }
-          return p.type === type && p.status === 'VERIFIED';
+        if (p.type === 'IDEA_SUBMISSION') {
+          return p.authorId === requesterId; // Only own ideas
+        }
+        return p.type === type && p.status === 'VERIFIED';
       }
 
       if (requesterRole === UserRole.DEVELOPER) {
-          if (p.type === 'IDEA_SUBMISSION') {
-              return p.team && p.team.includes(requesterId || ''); // Only assigned
-          }
-          return p.type === type && p.status === 'VERIFIED';
+        if (p.type === 'IDEA_SUBMISSION') {
+          return p.team && p.team.includes(requesterId || ''); // Only assigned
+        }
+        return p.type === type && p.status === 'VERIFIED';
       }
 
       // Default fallback
@@ -311,7 +326,7 @@ export const db = {
       timestamp: Date.now(),
       likes: 0,
       comments: [],
-      status: 'PENDING', 
+      status: 'PENDING',
       applicants: [],
       team: []
     };
@@ -323,16 +338,16 @@ export const db = {
     const posts = getStorage<Post[]>(KEYS.POSTS, INITIAL_POSTS);
     const post = posts.find(p => p.id === postId);
     if (post) {
-        post.status = 'VERIFIED'; 
-        if (post.type === 'IDEA_SUBMISSION') {
-            post.mvp = {
-                description: `MVP Architecture for "${post.title}": Focus on core user loops. Authentication, Database Schema, and Primary Workflow.`,
-                techStack: ['React Native', 'Firebase', 'Node.js'],
-                docLink: '#',
-                status: 'READY'
-            };
-        }
-        setStorage(KEYS.POSTS, posts);
+      post.status = 'VERIFIED';
+      if (post.type === 'IDEA_SUBMISSION') {
+        post.mvp = {
+          description: `MVP Architecture for "${post.title}": Focus on core user loops. Authentication, Database Schema, and Primary Workflow.`,
+          techStack: ['React Native', 'Firebase', 'Node.js'],
+          docLink: '#',
+          status: 'READY'
+        };
+      }
+      setStorage(KEYS.POSTS, posts);
     }
   },
 
@@ -346,8 +361,8 @@ export const db = {
     const posts = getStorage<Post[]>(KEYS.POSTS, INITIAL_POSTS);
     const post = posts.find(p => p.id === postId);
     if (post) {
-        post.likes += 1;
-        setStorage(KEYS.POSTS, posts);
+      post.likes += 1;
+      setStorage(KEYS.POSTS, posts);
     }
   },
 
@@ -355,12 +370,12 @@ export const db = {
     const posts = getStorage<Post[]>(KEYS.POSTS, INITIAL_POSTS);
     const post = posts.find(p => p.id === postId);
     if (post && post.type === 'IDEA_SUBMISSION') {
-        if (!post.applicants) post.applicants = [];
-        if (!post.applicants.includes(userId)) {
-            post.applicants.push(userId);
-            setStorage(KEYS.POSTS, posts);
-            return true;
-        }
+      if (!post.applicants) post.applicants = [];
+      if (!post.applicants.includes(userId)) {
+        post.applicants.push(userId);
+        setStorage(KEYS.POSTS, posts);
+        return true;
+      }
     }
     return false;
   },
@@ -369,11 +384,11 @@ export const db = {
     const posts = getStorage<Post[]>(KEYS.POSTS, INITIAL_POSTS);
     const post = posts.find(p => p.id === postId);
     if (post && post.type === 'IDEA_SUBMISSION') {
-        if (!post.team) post.team = [];
-        if (!post.team.includes(userId)) {
-            post.team.push(userId);
-            setStorage(KEYS.POSTS, posts);
-        }
+      if (!post.team) post.team = [];
+      if (!post.team.includes(userId)) {
+        post.team.push(userId);
+        setStorage(KEYS.POSTS, posts);
+      }
     }
   },
 
@@ -396,7 +411,7 @@ export const db = {
 
   getMessages: (currentUserId: string, otherUserId: string): Message[] => {
     const messages = getStorage<Message[]>(KEYS.MESSAGES, []);
-    return messages.filter(m => 
+    return messages.filter(m =>
       (m.senderId === currentUserId && m.receiverId === otherUserId) ||
       (m.senderId === otherUserId && m.receiverId === currentUserId)
     ).sort((a, b) => a.timestamp - b.timestamp);

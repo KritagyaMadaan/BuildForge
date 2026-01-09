@@ -222,11 +222,15 @@ const InstallPromptPopup: React.FC = () => {
 // --- Components ---
 
 const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () => void, viewMode?: 'DASHBOARD' | 'MARKET' | 'SHOWCASE', developers?: UserProfile[], onRefreshDevelopers?: () => void, onSubmission?: (type: 'UPDATE' | 'FINAL_PROJECT', postId?: string) => void }> = ({ post, currentUser, onUpdate, viewMode = 'DASHBOARD', developers = [], onRefreshDevelopers, onSubmission }) => {
-  const [isLiked, setIsLiked] = useState(false);
+  const [isLiked, setIsLiked] = useState(post.likedBy?.includes(currentUser.uid) || false);
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [showAssignPanel, setShowAssignPanel] = useState(false); // For managing teams
   const [showArchitecture, setShowArchitecture] = useState(false);
+
+  useEffect(() => {
+    setIsLiked(post.likedBy?.includes(currentUser.uid) || false);
+  }, [post.likedBy, currentUser.uid]);
 
   // Logic to determine if user can manage this project (ONLY Lead and Super Admin)
   const canManage = currentUser.role === UserRole.LEAD || currentUser.role === UserRole.SUPER_ADMIN;
@@ -234,8 +238,7 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
   const hasMVP = post.status === 'VERIFIED' && post.mvp;
 
   const handleLike = async () => {
-    await db.toggleLike(post.id);
-    setIsLiked(true);
+    await db.toggleLike(post.id, currentUser.uid);
     await onUpdate();
   };
 
@@ -255,25 +258,25 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
     });
   };
 
-  // Status mapping for the 8-step flow
+  // Status mapping for the flow
   const getStatusBadge = () => {
     if (post.status === 'REJECTED') {
       return <span className="px-3 py-1 bg-red-50 text-red-600 text-xs font-bold rounded-full border border-red-200">REJECTED BY ADMIN</span>;
     }
     if (post.status === 'PENDING') {
-      return <span className="px-3 py-1 bg-yellow-50 text-yellow-600 text-xs font-bold rounded-full border border-yellow-200">STEP 2: SQUADRAN REVIEW</span>;
+      return <span className="px-3 py-1 bg-yellow-50 text-yellow-600 text-xs font-bold rounded-full border border-yellow-200">SQUADRAN REVIEW</span>;
     }
     if (post.type === 'IDEA_SUBMISSION' && post.status === 'VERIFIED') {
-      return <span className="px-3 py-1 bg-purple-50 text-purple-600 text-xs font-bold rounded-full border border-purple-200">STEP 6: ACTIVE SPRINT</span>;
+      return <span className="px-3 py-1 bg-purple-50 text-purple-600 text-xs font-bold rounded-full border border-purple-200">ACTIVE SPRINT</span>;
     }
     if (post.type === 'OPEN_ROLE') {
-      return <span className="px-3 py-1 bg-blue-50 text-brand-blue text-xs font-bold rounded-full border border-blue-200">STEP 4: DEVS APPLY</span>;
+      return <span className="px-3 py-1 bg-blue-50 text-brand-blue text-xs font-bold rounded-full border border-blue-200">DEVS APPLY</span>;
     }
     if (post.type === 'DELIVERY') {
-      return <span className="px-3 py-1 bg-green-50 text-green-600 text-xs font-bold rounded-full border border-green-200">STEP 8: DELIVERY</span>;
+      return <span className="px-3 py-1 bg-green-50 text-green-600 text-xs font-bold rounded-full border border-green-200">DELIVERY</span>;
     }
     if (post.type === 'SPRINT_UPDATE') {
-      return <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded-full border border-slate-200">STEP 7: SPRINT UPDATE</span>;
+      return <span className="px-3 py-1 bg-slate-100 text-slate-600 text-xs font-bold rounded-full border border-slate-200">SPRINT UPDATE</span>;
     }
     return null;
   };
@@ -412,12 +415,12 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
 
       <p className="text-slate-600 leading-relaxed mb-4 whitespace-pre-wrap">{post.content}</p>
 
-      {/* --- STEP 3: MVP BLUEPRINT (Visible in Dashboard) --- */}
+      {/* --- MVP BLUEPRINT (Visible in Dashboard) --- */}
       {isIdea && hasMVP && (
         <div className="mb-6 bg-slate-50 border border-slate-200 rounded-2xl overflow-hidden">
           <div className="bg-slate-800 text-white px-4 py-2 flex items-center justify-between">
             <div className="flex items-center gap-2 text-xs font-bold uppercase tracking-wider">
-              <Monitor size={14} className="text-brand-orange" /> MVP Blueprint (Step 3)
+              <Monitor size={14} className="text-brand-orange" /> MVP Blueprint
             </div>
             <div className="text-[10px] font-bold bg-green-500 text-white px-2 py-0.5 rounded">READY</div>
           </div>
@@ -456,7 +459,7 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
         </div>
       )}
 
-      {/* --- STEP 5: ASSIGNED TEAM (Visible in Dashboard) --- */}
+      {/* --- ASSIGNED TEAM (Visible in Dashboard) --- */}
       {isIdea && hasMVP && (
         <div className="mb-4">
           <div className="flex items-center justify-between mb-2">
@@ -1636,7 +1639,7 @@ const App: React.FC = () => {
                     Squadran BuildForge
                   </h1>
                   <p className="text-slate-400 font-bold text-sm">
-                    {currentView === ViewType.SPRINT_HUB ? 'Project Dashboard (Step 6)' : currentView === ViewType.DEV_MARKET ? 'My Assignments' : currentView === ViewType.UPDATES ? 'Updates' : 'Project Delivery (Step 8)'}
+                    {currentView === ViewType.SPRINT_HUB ? 'Project Dashboard' : currentView === ViewType.DEV_MARKET ? 'My Assignments' : currentView === ViewType.UPDATES ? 'Updates' : 'Project Delivery'}
                   </p>
                 </div>
                 {(currentView === ViewType.SPRINT_HUB || currentView === ViewType.LAUNCHPAD) && (
@@ -1644,7 +1647,7 @@ const App: React.FC = () => {
                     {currentView === ViewType.SPRINT_HUB && currentUser.role === UserRole.FOUNDER && (
                       <button onClick={() => { setSubmissionType('UPDATE'); setShowCreateModal(true); }} className="text-white px-5 py-3 rounded-xl font-bold flex items-center gap-2 hover:opacity-90 transition-transform hover:scale-105 shadow-lg bg-brand-blue">
                         <Plus size={20} />
-                        Submit Idea (Step 1)
+                        Submit Idea
                       </button>
                     )}
                   </>
@@ -1700,7 +1703,7 @@ const App: React.FC = () => {
           <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
             <div className="bg-white w-full max-w-lg rounded-[2rem] p-8 shadow-2xl">
               <div className="flex justify-between items-center mb-6"><h3 className="text-xl font-black text-slate-800">
-                {currentView === ViewType.SPRINT_HUB ? 'Submit Idea (Step 1)' :
+                {currentView === ViewType.SPRINT_HUB ? 'Submit Idea' :
                   submissionType === 'FINAL_PROJECT' ? 'Submit Final Project' : 'Create Post'}
               </h3><button onClick={() => setShowCreateModal(false)}><XCircle className="text-slate-400 hover:text-red-500" /></button></div>
 
@@ -1720,7 +1723,7 @@ const App: React.FC = () => {
                   </div>
                 )}
 
-                <textarea name="content" required rows={5} placeholder={currentView === ViewType.SPRINT_HUB ? "Describe your idea... (This will be sent for Step 2 Review)" : "Update Content..."} className="w-full p-4 bg-slate-50 rounded-xl font-medium outline-none resize-none"></textarea>
+                <textarea name="content" required rows={5} placeholder={currentView === ViewType.SPRINT_HUB ? "Describe your idea... (This will be sent for Squadran Review)" : "Update Content..."} className="w-full p-4 bg-slate-50 rounded-xl font-medium outline-none resize-none"></textarea>
 
                 {currentView === ViewType.SPRINT_HUB && (
                   <>

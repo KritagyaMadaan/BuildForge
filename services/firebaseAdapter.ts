@@ -8,63 +8,75 @@ export const db = {
     // ===== AUTHENTICATION =====
 
     loginSuperAdmin: async (password: string): Promise<{ success: boolean, user?: UserProfile, error?: string }> => {
-        console.log("Attempting Super Admin login with password length:", password.length);
+        console.log("Attempting Super Admin login...");
 
-        // For super admin, we'll use a special email
-        if (password.toLowerCase() === 'squadran_root') {
-            console.log("Password match confirmed. Proceeding to Firebase auth...");
-            const email = 'root.admin.v4@buildforge.io';
-            // Use a stronger password that Firebase will accept (uppercase, lowercase, special char, numbers)
-            const firebasePassword = 'Squadran@Root2025';
+        try {
+            const encoder = new TextEncoder();
+            const data = encoder.encode(password.toLowerCase());
+            const hashBuffer = await crypto.subtle.digest('SHA-256', data);
+            const hashArray = Array.from(new Uint8Array(hashBuffer));
+            const hashHex = hashArray.map(b => b.toString(16).padStart(2, '0')).join('');
 
-            try {
-                // Try to login first
-                console.log("Attempting authService.signIn...");
-                let result = await authService.signIn(email, firebasePassword);
-                console.log("SignIn result:", result);
+            const targetHash = import.meta.env.VITE_ADMIN_KEY_HASH || '';
 
-                if (result.success && result.user) {
-                    console.log("Super Admin login successful!");
-                    return { success: true, user: result.user };
-                }
+            // For super admin, we'll use a special email
+            if (hashHex === targetHash && targetHash !== '') {
+                console.log("Password match confirmed. Proceeding to Firebase auth...");
+                const email = 'root.admin.v4@buildforge.io';
+                // Use a stronger password that Firebase will accept (uppercase, lowercase, special char, numbers)
+                const firebasePassword = 'Squadran@Root2025';
 
-                console.log("Login failed (" + result.error + "). Attempting to create Super Admin account as fallback...");
+                try {
+                    // Try to login first
+                    console.log("Attempting authService.signIn...");
+                    let result = await authService.signIn(email, firebasePassword);
+                    console.log("SignIn result:", result);
 
-                const createResult = await authService.signUp(email, firebasePassword, {
-                    name: 'Super Admin',
-                    role: UserRole.SUPER_ADMIN,
-                    bio: 'Platform Root User',
-                    avatar: 'https://cdn-icons-png.flaticon.com/512/2942/2942813.png'
-                });
+                    if (result.success && result.user) {
+                        console.log("Super Admin login successful!");
+                        return { success: true, user: result.user };
+                    }
 
-                if (createResult.success && createResult.user) {
-                    console.log("Super Admin account created and logged in!");
-                    return { success: true, user: createResult.user };
-                } else {
-                    console.error("Failed to create Super Admin account:", createResult.error);
+                    console.log("Login failed (" + result.error + "). Attempting to create Super Admin account as fallback...");
 
-                    // FALLBACK: If Firebase Auth fails (network, quota, password mismatch we can't fix),
-                    // allow access anyway as this IS the correct physical user (they passed the 'squadran_root' check).
-                    console.warn("CRITICAL: Firebase Auth failed. Activating Emergency Mock Session.");
-
-                    const mockUser: UserProfile = {
-                        uid: 'root_override_v4',
-                        name: 'Squadran Root (Systems)',
+                    const createResult = await authService.signUp(email, firebasePassword, {
+                        name: 'Super Admin',
                         role: UserRole.SUPER_ADMIN,
-                        email: 'root.admin@local',
-                        avatar: 'https://cdn-icons-png.flaticon.com/512/2942/2942813.png',
-                        bio: 'Emergency Access Session',
-                        blocked: false
-                    };
+                        bio: 'Platform Root User',
+                        avatar: 'https://cdn-icons-png.flaticon.com/512/2942/2942813.png'
+                    });
 
-                    return { success: true, user: mockUser };
+                    if (createResult.success && createResult.user) {
+                        console.log("Super Admin account created and logged in!");
+                        return { success: true, user: createResult.user };
+                    } else {
+                        console.error("Failed to create Super Admin account:", createResult.error);
+
+                        // FALLBACK: If Firebase Auth fails (network, quota, password mismatch we can't fix),
+                        // allow access anyway as this IS the correct physical user (they passed the check).
+                        console.warn("CRITICAL: Firebase Auth failed. Activating Emergency Mock Session.");
+
+                        const mockUser: UserProfile = {
+                            uid: 'root_override_v4',
+                            name: 'Squadran Root (Systems)',
+                            role: UserRole.SUPER_ADMIN,
+                            email: 'root.admin@local',
+                            avatar: 'https://cdn-icons-png.flaticon.com/512/2942/2942813.png',
+                            bio: 'Emergency Access Session',
+                            blocked: false
+                        };
+
+                        return { success: true, user: mockUser };
+                    }
+                } catch (e: any) {
+                    console.error("Super Admin Login Exception:", e);
+                    return { success: false, error: "Exception: " + e.message };
                 }
-            } catch (e: any) {
-                console.error("Super Admin Login Exception:", e);
-                return { success: false, error: "Exception: " + e.message };
+            } else {
+                console.log("Password mismatch.");
             }
-        } else {
-            console.log("Password mismatch. Expected 'squadran_root', got:", password);
+        } catch (e) {
+            console.error("Auth process error", e);
         }
         return { success: false, error: 'Invalid password provided' };
     },
@@ -292,8 +304,8 @@ export const db = {
         await dbService.deletePost(postId);
     },
 
-    toggleLike: async (postId: string): Promise<void> => {
-        await dbService.toggleLike(postId);
+    toggleLike: async (postId: string, userId: string): Promise<void> => {
+        await dbService.toggleLike(postId, userId);
     },
 
     applyToProject: async (postId: string, userId: string): Promise<boolean> => {

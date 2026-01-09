@@ -10,9 +10,9 @@ export enum UserRole {
 export enum ViewType {
   SQUADRAN_HOME = 'SQUADRAN_HOME',
   SUPER_ADMIN_DASHBOARD = 'SUPER_ADMIN_DASHBOARD',
-  SPRINT_HUB = 'SPRINT_HUB', // Step 6: Project Dashboard
-  DEV_MARKET = 'DEV_MARKET', // Step 4: Developers Apply
-  LAUNCHPAD = 'LAUNCHPAD', // Step 8: Project Delivery
+  SPRINT_HUB = 'SPRINT_HUB', // Project Dashboard
+  DEV_MARKET = 'DEV_MARKET', // Developers Apply
+  LAUNCHPAD = 'LAUNCHPAD', // Project Delivery
   UPDATES = 'UPDATES', // New Updates Section
   NETWORKING = 'NETWORKING',
   MESSAGES = 'MESSAGES',
@@ -102,14 +102,15 @@ export interface Post {
   title?: string;
   image?: string;
   likes: number;
+  likedBy?: string[]; // Array of User UIDs who liked this post
   comments: Comment[];
-  status: 'PENDING' | 'VERIFIED' | 'REJECTED'; // PENDING = Step 2 Review, VERIFIED = Step 3 MVP Ready, REJECTED = Idea rejected by admin
+  status: 'PENDING' | 'VERIFIED' | 'REJECTED'; // PENDING = Review, VERIFIED = MVP Ready, REJECTED = Idea rejected by admin
   type: 'SPRINT_UPDATE' | 'OPEN_ROLE' | 'DELIVERY' | 'IDEA_SUBMISSION';
   timestamp: number;
   company?: string;
   jobLink?: string;
 
-  // Step 3-5 Additions
+  // MVP Additions
   mvp?: MVPData;
   applicants?: string[]; // Array of User UIDs
   team?: string[]; // Array of User UIDs

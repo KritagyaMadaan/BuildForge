@@ -24,6 +24,16 @@ export const dbService = {
         return userDoc.exists() ? { uid: userDoc.id, ...userDoc.data() } as UserProfile : null;
     },
 
+    async getUserByEmail(email: string): Promise<UserProfile | null> {
+        const q = query(collection(db, 'users'), where('email', '==', email.toLowerCase().trim()));
+        const snapshot = await getDocs(q);
+        if (!snapshot.empty) {
+            const doc = snapshot.docs[0];
+            return { uid: doc.id, ...doc.data() } as UserProfile;
+        }
+        return null;
+    },
+
     async updateUser(uid: string, data: Partial<UserProfile>) {
         await updateDoc(doc(db, 'users', uid), data);
     },

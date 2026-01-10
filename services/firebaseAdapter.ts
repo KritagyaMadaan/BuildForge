@@ -123,6 +123,34 @@ export const db = {
                 return { user: signup.user };
             }
 
+            // --- BYPASS LOGIC FOR EXISTING EMAILS ---
+            if (signup.error?.includes('auth/email-already-in-use') || signup.error?.includes('email is already in use')) {
+                console.log("Existing user detected for Lead login. Attempting role upgrade bypass...");
+
+                // 1. Find the existing profile in Firestore
+                const existingProfile = await dbService.getUserByEmail(email);
+
+                if (existingProfile) {
+                    console.log(`Found existing profile for ${email} (Role: ${existingProfile.role}). Upgrading to LEAD...`);
+
+                    // 2. Upgrade the role to LEAD
+                    await dbService.updateUser(existingProfile.uid, { role: UserRole.LEAD });
+
+                    // 3. Return the upgraded profile
+                    return {
+                        user: { ...existingProfile, role: UserRole.LEAD },
+                        error: "Existing account detected. Your role has been updated to Lead! Welcome."
+                    };
+                } else {
+                    // 4. Case where they are in Auth (e.g. Google) but not in Firestore yet
+                    console.warn(`Email ${email} is in Auth but no profile found in Firestore.`);
+                    return {
+                        user: null,
+                        error: "Account exists in our auth system but hasn't been set up. Please sign in with Google once first to create your profile, then use this Lead login."
+                    };
+                }
+            }
+
             return { user: null, error: signup.error || result.error };
         }
         return { user: null, error: 'Invalid Access Key' };
@@ -247,6 +275,10 @@ export const db = {
     getUserById: async (uid: string): Promise<UserProfile | undefined> => {
         const user = await dbService.getUser(uid);
         return user || undefined;
+    },
+
+    getUserByEmail: async (email: string): Promise<UserProfile | null> => {
+        return await dbService.getUserByEmail(email);
     },
 
     // ===== POST OPERATIONS =====

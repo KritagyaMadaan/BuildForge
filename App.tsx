@@ -250,11 +250,14 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
   };
 
   const handleShare = () => {
-    const shareText = `${post.title || 'Update'} by ${post.authorName}\n\n${post.content}\n\nShared via BuildForge`;
-    navigator.clipboard.writeText(shareText).then(() => {
-      alert("Link copied!");
+    // Copy the current page URL to clipboard as requested
+    navigator.clipboard.writeText(window.location.href).then(() => {
+      alert("Sprint Link copied to clipboard!");
     }).catch(err => {
       console.error('Failed to copy: ', err);
+      // Fallback: copy a descriptive text if URL fails
+      const shareText = `${post.title || 'Update'} by ${post.authorName}\n\n${post.content}\n\nShared via BuildForge`;
+      navigator.clipboard.writeText(shareText);
     });
   };
 
@@ -551,48 +554,52 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
         </div>
       )}
 
-      <div className="flex items-center gap-6 pt-4 border-t border-slate-50">
-        <button onClick={handleLike} className={`flex items-center gap-2 transition-colors font-bold text-sm group-hover:animate-bounce ${isLiked ? 'text-red-500' : 'text-slate-400 hover:text-red-500'}`}>
-          <Heart size={18} className={post.likes > 0 || isLiked ? "fill-current" : ""} /> {post.likes}
-        </button>
-        <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-2 text-slate-400 hover:text-brand-blue transition-colors font-bold text-sm">
-          <MessageCircle size={18} /> {post.comments.length} Comments
-        </button>
-        {isIdea && onSubmission && currentUser.role === UserRole.DEVELOPER && post.team?.includes(currentUser.uid) && (
-          <button onClick={() => onSubmission('UPDATE', post.id)} className="flex items-center gap-2 text-slate-400 hover:text-green-600 transition-colors font-bold text-sm">
-            <Plus size={18} /> Post Update
-          </button>
-        )}
-        <button onClick={handleShare} className="flex items-center gap-2 text-slate-400 hover:text-brand-orange transition-colors font-bold text-sm ml-auto">
-          <Share2 size={18} /> Share
-        </button>
-      </div>
+      {post.type !== 'SPRINT_UPDATE' && (
+        <>
+          <div className="flex items-center gap-6 pt-4 border-t border-slate-50">
+            <button onClick={handleLike} className={`flex items-center gap-2 transition-colors font-bold text-sm group-hover:animate-bounce ${isLiked ? 'text-red-500' : 'text-slate-400 hover:text-red-500'}`}>
+              <Heart size={18} className={post.likes > 0 || isLiked ? "fill-current" : ""} /> {post.likes}
+            </button>
+            <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-2 text-slate-400 hover:text-brand-blue transition-colors font-bold text-sm">
+              <MessageCircle size={18} /> {post.comments.length} Comments
+            </button>
+            {isIdea && onSubmission && currentUser.role === UserRole.DEVELOPER && post.team?.includes(currentUser.uid) && (
+              <button onClick={() => onSubmission('UPDATE', post.id)} className="flex items-center gap-2 text-slate-400 hover:text-green-600 transition-colors font-bold text-sm">
+                <Plus size={18} /> Post Update
+              </button>
+            )}
+            <button onClick={handleShare} className="flex items-center gap-2 text-slate-400 hover:text-brand-orange transition-colors font-bold text-sm ml-auto">
+              <Share2 size={18} /> Share
+            </button>
+          </div>
 
-      {showComments && (
-        <div className="mt-4 pt-4 border-t border-slate-50 bg-slate-50/50 -mx-6 px-6 pb-2">
-          <div className="space-y-3 mb-4 max-h-60 overflow-y-auto no-scrollbar">
-            {post.comments.length === 0 && <p className="text-xs text-slate-400 italic">No feedback yet. Be the first!</p>}
-            {post.comments.map(comment => (
-              <div key={comment.id} className="bg-white p-3 rounded-xl text-sm shadow-sm">
-                <div className="flex justify-between mb-1">
-                  <span className="font-bold text-slate-700">{comment.userName}</span>
-                  <span className="text-[10px] text-slate-400">{new Date(comment.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
-                </div>
-                <p className="text-slate-600">{comment.text}</p>
+          {showComments && (
+            <div className="mt-4 pt-4 border-t border-slate-50 bg-slate-50/50 -mx-6 px-6 pb-2">
+              <div className="space-y-3 mb-4 max-h-60 overflow-y-auto no-scrollbar">
+                {post.comments.length === 0 && <p className="text-xs text-slate-400 italic">No feedback yet. Be the first!</p>}
+                {post.comments.map(comment => (
+                  <div key={comment.id} className="bg-white p-3 rounded-xl text-sm shadow-sm">
+                    <div className="flex justify-between mb-1">
+                      <span className="font-bold text-slate-700">{comment.userName}</span>
+                      <span className="text-[10px] text-slate-400">{new Date(comment.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                    </div>
+                    <p className="text-slate-600">{comment.text}</p>
+                  </div>
+                ))}
               </div>
-            ))}
-          </div>
-          <div className="flex gap-2">
-            <input
-              type="text"
-              value={commentText}
-              onChange={(e) => setCommentText(e.target.value)}
-              placeholder="Give feedback..."
-              className="flex-1 p-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand-blue"
-            />
-            <button onClick={handleComment} className="bg-brand-blue text-white p-2 rounded-lg hover:bg-blue-600"><Send size={16} /></button>
-          </div>
-        </div>
+              <div className="flex gap-2">
+                <input
+                  type="text"
+                  value={commentText}
+                  onChange={(e) => setCommentText(e.target.value)}
+                  placeholder="Give feedback..."
+                  className="flex-1 p-2 bg-white border border-slate-200 rounded-lg text-sm focus:outline-none focus:border-brand-blue"
+                />
+                <button onClick={handleComment} className="bg-brand-blue text-white p-2 rounded-lg hover:bg-blue-600"><Send size={16} /></button>
+              </div>
+            </div>
+          )}
+        </>
       )}
     </div>
   );
@@ -1187,6 +1194,7 @@ const App: React.FC = () => {
 
   // Google Sign Up - Role Selection
   const [pendingGoogleUser, setPendingGoogleUser] = useState<User | null>(null);
+  const [isLoggingIn, setIsLoggingIn] = useState(false);
 
   const [submissionType, setSubmissionType] = useState<'UPDATE' | 'FINAL_PROJECT'>('UPDATE');
   const [submissionTargetPostId, setSubmissionTargetPostId] = useState<string | null>(null);
@@ -1225,6 +1233,11 @@ const App: React.FC = () => {
       // RESTRICT FOUNDER VIEW: Only show their own posts
       if (role === UserRole.FOUNDER && uid) {
         allPosts = allPosts.filter(p => p.authorId === uid);
+      }
+
+      // RESTRICT ADMIN/LEAD VIEW: In Sprint Hub, only show ideas (Updates are in dedicated section)
+      if ((role === UserRole.SUPER_ADMIN || role === UserRole.LEAD)) {
+        allPosts = allPosts.filter(p => p.type === 'IDEA_SUBMISSION');
       }
 
       setPosts(allPosts);
@@ -1891,31 +1904,52 @@ const App: React.FC = () => {
 
                     <button
                       onClick={async () => {
-                        const result = await db.loginWithGoogle();
-                        if (result.user) {
-                          setCurrentUser(result.user);
-                          if (result.user.role === UserRole.LEAD || result.user.role === UserRole.SUPER_ADMIN) {
-                            setCurrentView(ViewType.ADMIN_DASHBOARD);
-                          } else if (result.user.role === UserRole.DEVELOPER) {
-                            setCurrentView(ViewType.DEV_MARKET);
+                        if (isLoggingIn) return;
+                        setIsLoggingIn(true);
+                        try {
+                          const result = await db.loginWithGoogle();
+                          if (result.user) {
+                            setCurrentUser(result.user);
+                            if (result.user.role === UserRole.LEAD || result.user.role === UserRole.SUPER_ADMIN) {
+                              setCurrentView(ViewType.ADMIN_DASHBOARD);
+                            } else if (result.user.role === UserRole.DEVELOPER) {
+                              setCurrentView(ViewType.DEV_MARKET);
+                            } else {
+                              setCurrentView(ViewType.SPRINT_HUB);
+                            }
+                          } else if (result.isNewUser && result.firebaseUser) {
+                            setPendingGoogleUser(result.firebaseUser);
                           } else {
-                            setCurrentView(ViewType.SPRINT_HUB);
+                            // If user closed the popup, result.error will contain the reason
+                            // But we only want to alert if it's NOT a manual close choice, 
+                            // though Firebase includes "popup-closed-by-user" in error msg.
+                            if (result.error && !result.error.includes("popup-closed-by-user")) {
+                              alert("Google Login Failed: " + result.error);
+                            }
+                            console.log("Google Auth Info:", result.error);
                           }
-                        } else if (result.isNewUser && result.firebaseUser) {
-                          setPendingGoogleUser(result.firebaseUser);
-                        } else {
-                          alert("Google Login Failed: " + result.error);
+                        } catch (error: any) {
+                          if (!error.message?.includes("popup-closed-by-user")) {
+                            alert("Login Error: " + error.message);
+                          }
+                        } finally {
+                          setIsLoggingIn(false);
                         }
                       }}
-                      className="w-full py-3 bg-white border-2 border-slate-100 text-slate-700 rounded-2xl font-bold hover:bg-slate-50 flex items-center justify-center gap-2 group transition-all"
+                      disabled={isLoggingIn}
+                      className={`w-full py-3 bg-white border-2 border-slate-100 text-slate-700 rounded-2xl font-bold transition-all flex items-center justify-center gap-2 group ${isLoggingIn ? 'opacity-50 cursor-not-allowed' : 'hover:bg-slate-50'}`}
                     >
-                      <svg className="w-5 h-5" viewBox="0 0 24 24">
-                        <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
-                        <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
-                        <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.26z.01-.01.01z" />
-                        <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
-                      </svg>
-                      Sign in with Google
+                      {isLoggingIn ? (
+                        <RefreshCcw size={20} className="animate-spin text-brand-blue" />
+                      ) : (
+                        <svg className="w-5 h-5" viewBox="0 0 24 24">
+                          <path fill="currentColor" d="M22.56 12.25c0-.78-.07-1.53-.2-2.25H12v4.26h5.92c-.26 1.37-1.04 2.53-2.21 3.31v2.77h3.57c2.08-1.92 3.28-4.74 3.28-8.09z" />
+                          <path fill="currentColor" d="M12 23c2.97 0 5.46-.98 7.28-2.66l-3.57-2.77c-.98.66-2.23 1.06-3.71 1.06-2.86 0-5.29-1.93-6.16-4.53H2.18v2.84C3.99 20.53 7.7 23 12 23z" />
+                          <path fill="currentColor" d="M5.84 14.09c-.22-.66-.35-1.36-.35-2.09s.13-1.43.35-2.09V7.07H2.18C1.43 8.55 1 10.22 1 12s.43 3.45 1.18 4.93l2.85-2.26z.01-.01.01z" />
+                          <path fill="currentColor" d="M12 5.38c1.62 0 3.06.56 4.21 1.64l3.15-3.15C17.45 2.09 14.97 1 12 1 7.7 1 3.99 3.47 2.18 7.07l3.66 2.84c.87-2.6 3.3-4.53 6.16-4.53z" />
+                        </svg>
+                      )}
+                      {isLoggingIn ? 'Connecting...' : 'Sign in with Google'}
                     </button>
                   </div>
 

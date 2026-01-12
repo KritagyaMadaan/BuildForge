@@ -249,16 +249,34 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
     await onUpdate();
   };
 
-  const handleShare = () => {
-    // Copy the current page URL to clipboard as requested
-    navigator.clipboard.writeText(window.location.href).then(() => {
-      alert("Sprint Link copied to clipboard!");
-    }).catch(err => {
-      console.error('Failed to copy: ', err);
-      // Fallback: copy a descriptive text if URL fails
-      const shareText = `${post.title || 'Update'} by ${post.authorName}\n\n${post.content}\n\nShared via BuildForge`;
-      navigator.clipboard.writeText(shareText);
-    });
+  const handleShare = async () => {
+    // Construct Deep Link URL
+    const url = new URL(window.location.href);
+    url.searchParams.set('post', post.id);
+    const shareUrl = url.toString();
+
+    const shareData = {
+      title: post.title || 'BuildForge Update',
+      text: `${post.title || 'Update'} by ${post.authorName}\n\n${post.content}\n\nCheck it out on BuildForge!`,
+      url: shareUrl
+    };
+
+    try {
+      if (navigator.share) {
+        await navigator.share(shareData);
+      } else {
+        // Fallback: Copy robust details to clipboard
+        const fallbackText = `${shareData.text}\n${shareData.url}`;
+        await navigator.clipboard.writeText(fallbackText);
+        alert("Post link copied to clipboard!");
+      }
+    } catch (err) {
+      console.error('Error sharing:', err);
+      // Don't alert if user cancelled share
+      if ((err as Error).name !== 'AbortError') {
+        alert("Unable to share at this time.");
+      }
+    }
   };
 
   // Status mapping for the flow
@@ -1199,6 +1217,62 @@ const App: React.FC = () => {
   const [submissionType, setSubmissionType] = useState<'UPDATE' | 'FINAL_PROJECT'>('UPDATE');
   const [submissionTargetPostId, setSubmissionTargetPostId] = useState<string | null>(null);
 
+  // Deep Linking State
+  const [deepLinkedPost, setDeepLinkedPost] = useState<Post | null>(null);
+
+  useEffect(() => {
+    const checkDeepLink = async () => {
+      // If we already have the post, or if the user is logging out (currentUser becomes null but we might still want to show public posts if allowed? No, strict mode kills it), just check.
+      // Actually, we want to retry if we don't have the post yet.
+      if (deepLinkedPost) return;
+
+      console.log("[DeepLink] Checking URL params:", window.location.search);
+      const params = new URLSearchParams(window.location.search);
+      const postId = params.get('post');
+
+      if (postId) {
+        // TEMP DEBUGGING
+        // alert(`Debug: Found Deep Link ID: ${postId}`);
+
+        console.log("[DeepLink] Found post ID:", postId);
+        try {
+          // Pass the current user explicitly if needed, but the adapter uses the global auth/db state.
+          // The issue is simply timing.
+          const post = await db.getPostById(postId);
+          console.log("[DeepLink] Fetch result:", post);
+
+          if (post) {
+            setDeepLinkedPost(post);
+            // alert("Debug: Post Fetched Successfully! Modal should open.");
+            console.log("[DeepLink] State set. Modal should open.");
+          } else {
+            // Only warn if we are logged in. If logged out, it might just be permission denied.
+            // But getPostById catches errors internally? No, dbService.getPost does?
+            // dbService.getPost uses getDoc. If it fails accessing, it throws.
+            // We are in catch block if permission denied.
+            if (currentUser) {
+              console.warn("[DeepLink] Post not found for ID:", postId);
+              // Optional: alert("Post not found");
+            }
+          }
+        } catch (error: any) {
+          console.error("[DeepLink] Error fetching post:", error);
+          if (error.code === 'permission-denied') {
+            console.log("[DeepLink] Permission denied. User likely needs to login.");
+          }
+        }
+      }
+    };
+    checkDeepLink();
+  }, [currentUser]); // Retry when user logs in
+
+  const closeDeepLink = () => {
+    setDeepLinkedPost(null);
+    const url = new URL(window.location.href);
+    url.searchParams.delete('post');
+    window.history.pushState({}, '', url);
+  };
+
   // New Registration State
   const [registrationRole, setRegistrationRole] = useState<'FOUNDER' | 'DEVELOPER' | 'LEAD' | null>(null);
 
@@ -1377,7 +1451,7 @@ const App: React.FC = () => {
       }
     }
     else if (registrationRole === 'LEAD') {
-      const result = await db.loginLead(formData.email, formData.accessKey);
+      const result = await db.loginLead(formData.accessKey);
       if (result.user) {
         setCurrentUser(result.user);
         setCurrentView(ViewType.ADMIN_DASHBOARD);
@@ -1778,6 +1852,36 @@ const App: React.FC = () => {
             </div>
           </div>
         )}
+        {/* Deep Link Modal */}
+        {deepLinkedPost && (
+          <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in-up">
+            <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl relative border-4 border-brand-blue">
+              <button
+                onClick={closeDeepLink}
+                className="absolute top-4 right-4 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors z-10"
+              >
+                <XCircle size={24} className="text-slate-600" />
+              </button>
+              <div className="p-2 pt-12 md:p-6 md:pt-6">
+                <div className="mb-4 text-center">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Shared Post</p>
+                </div>
+                <PostCard
+                  post={deepLinkedPost}
+                  currentUser={currentUser || { uid: 'guest', name: 'Guest Viewer', role: UserRole.NONE } as UserProfile}
+                  onUpdate={() => { }}
+                  viewMode="DASHBOARD"
+                />
+                {!currentUser && (
+                  <div className="mt-4 p-4 bg-blue-50 rounded-xl text-center">
+                    <p className="text-sm font-bold text-slate-600 mb-2">Join BuildForge to interact with this post!</p>
+                    <button onClick={closeDeepLink} className="text-xs font-black text-brand-blue underline">Go to Login</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     );
   }
@@ -2011,7 +2115,7 @@ const App: React.FC = () => {
                   {registrationRole === 'LEAD' && (
                     <div className="space-y-3">
                       <h3 className="text-lg font-black text-slate-800 mb-2">Lead Authenticate</h3>
-                      <input placeholder="Email" className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none text-sm" onChange={e => updateForm('email', e.target.value)} />
+                      <p className="text-xs font-bold text-slate-500 mb-2 italic">Enter your unique platform access key to continue.</p>
                       <input type="password" placeholder="Access Key" className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none text-sm" onChange={e => updateForm('accessKey', e.target.value)} />
                       <button onClick={handleSubmitAuth} className="w-full py-3 bg-slate-800 text-white rounded-xl font-bold shadow-lg hover:bg-slate-700 mt-2">Authenticate</button>
                     </div>
@@ -2124,6 +2228,36 @@ const App: React.FC = () => {
           </div>
         </div>
 
+        {/* Deep Link Modal */}
+        {deepLinkedPost && (
+          <div className="fixed inset-0 z-[10002] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm animate-fade-in-up">
+            <div className="bg-white rounded-[2rem] w-full max-w-2xl max-h-[90vh] overflow-y-auto shadow-2xl relative border-4 border-brand-blue">
+              <button
+                onClick={closeDeepLink}
+                className="absolute top-4 right-4 p-2 bg-slate-100 rounded-full hover:bg-slate-200 transition-colors z-10"
+              >
+                <XCircle size={24} className="text-slate-600" />
+              </button>
+              <div className="p-2 pt-12 md:p-6 md:pt-6">
+                <div className="mb-4 text-center">
+                  <p className="text-xs font-bold text-slate-400 uppercase tracking-widest">Shared Post</p>
+                </div>
+                <PostCard
+                  post={deepLinkedPost}
+                  currentUser={currentUser || { uid: 'guest', name: 'Guest Viewer', role: UserRole.NONE } as UserProfile}
+                  onUpdate={() => { }}
+                  viewMode="DASHBOARD"
+                />
+                {!currentUser && (
+                  <div className="mt-4 p-4 bg-blue-50 rounded-xl text-center">
+                    <p className="text-sm font-bold text-slate-600 mb-2">Join BuildForge to interact with this post!</p>
+                    <button onClick={closeDeepLink} className="text-xs font-black text-brand-blue underline">Go to Login</button>
+                  </div>
+                )}
+              </div>
+            </div>
+          </div>
+        )}
       </div>
     </div>
   );

@@ -99,7 +99,10 @@ export const db = {
         return result.success && result.user ? result.user : null;
     },
 
-    loginLead: async (email: string, accessKey: string): Promise<{ user: UserProfile | null, error?: string }> => {
+    loginLead: async (accessKey: string): Promise<{ user: UserProfile | null, error?: string }> => {
+        // Use a fixed system email for all Leads logging in via code
+        const email = 'platform.lead@buildforge.io';
+
         if (accessKey === 'Blue$Falcon_47!Code') {
             // Salt the key to satisfy Firebase's 6-char min password requirement
             const secureKey = accessKey + '_secure_key';
@@ -111,43 +114,24 @@ export const db = {
             }
 
             // Auto-Register if login failed (and key is correct)
-            console.log("Lead Login failed, attempting Auto-Register with salted key for:", email);
+            console.log("Lead Login failed, attempting Auto-Register with salted key for system account.");
             const signup = await authService.signUp(email, secureKey, {
-                name: email.split('@')[0], // Auto-generate name from email
+                name: 'Platform Lead',
                 email: email,
                 role: UserRole.LEAD,
-                bio: 'Platform Lead'
+                bio: 'Centralized Platform Management'
             });
 
             if (signup.success && signup.user) {
                 return { user: signup.user };
             }
 
-            // --- BYPASS LOGIC FOR EXISTING EMAILS ---
+            // Internal fallback or upgrade if email exists elsewhere
             if (signup.error?.includes('auth/email-already-in-use') || signup.error?.includes('email is already in use')) {
-                console.log("Existing user detected for Lead login. Attempting role upgrade bypass...");
-
-                // 1. Find the existing profile in Firestore
                 const existingProfile = await dbService.getUserByEmail(email);
-
                 if (existingProfile) {
-                    console.log(`Found existing profile for ${email} (Role: ${existingProfile.role}). Upgrading to LEAD...`);
-
-                    // 2. Upgrade the role to LEAD
                     await dbService.updateUser(existingProfile.uid, { role: UserRole.LEAD });
-
-                    // 3. Return the upgraded profile
-                    return {
-                        user: { ...existingProfile, role: UserRole.LEAD },
-                        error: "Existing account detected. Your role has been updated to Lead! Welcome."
-                    };
-                } else {
-                    // 4. Case where they are in Auth (e.g. Google) but not in Firestore yet
-                    console.warn(`Email ${email} is in Auth but no profile found in Firestore.`);
-                    return {
-                        user: null,
-                        error: "Account exists in our auth system but hasn't been set up. Please sign in with Google once first to create your profile, then use this Lead login."
-                    };
+                    return { user: { ...existingProfile, role: UserRole.LEAD } };
                 }
             }
 
@@ -308,6 +292,10 @@ export const db = {
     getUserPosts: async (userId: string): Promise<Post[]> => {
         const allPosts = await dbService.getPosts();
         return allPosts.filter(p => p.authorId === userId);
+    },
+
+    getPostById: async (postId: string): Promise<Post | null> => {
+        return await dbService.getPost(postId);
     },
 
     createPost: async (post: Omit<Post, 'id' | 'timestamp' | 'likes' | 'comments' | 'applicants' | 'team'>): Promise<void> => {

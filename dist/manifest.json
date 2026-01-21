@@ -1,7 +1,7 @@
 {
   "name": "Squadran BuildForge",
   "short_name": "BuildForge",
-  "description": "Where student ideas are forged into products",
+  "description": "Where ideas are forged into products",
   "start_url": "/",
   "scope": "/",
   "display": "standalone",

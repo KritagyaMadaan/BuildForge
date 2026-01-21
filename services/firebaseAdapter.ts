@@ -161,8 +161,8 @@ export const db = {
         return { user: null, error: result.error };
     },
 
-    completeGoogleSignup: async (firebaseUser: User, role: UserRole, resumeUrl?: string): Promise<{ user: UserProfile | null, error?: string }> => {
-        const result = await authService.createGoogleUser(firebaseUser, role, resumeUrl);
+    completeGoogleSignup: async (firebaseUser: User, role: UserRole, additionalData?: Partial<UserProfile>): Promise<{ user: UserProfile | null, error?: string }> => {
+        const result = await authService.createGoogleUser(firebaseUser, role, additionalData);
         if (result.success && result.user) {
             return { user: result.user };
         }
@@ -172,6 +172,12 @@ export const db = {
 
     updateUser: async (uid: string, data: Partial<UserProfile>): Promise<UserProfile | null> => {
         await dbService.updateUser(uid, data);
+        // We don't fetch the user back here because onSnapshot handles the update
+        // and it saves 1 Firestore read per update (significant for heartbeats)
+        return null;
+    },
+
+    getUser: async (uid: string): Promise<UserProfile | null> => {
         return await dbService.getUser(uid);
     },
 
@@ -408,6 +414,10 @@ export const db = {
 
     getMessages: async (currentUserId: string, otherUserId: string): Promise<Message[]> => {
         return await dbService.getMessages(currentUserId, otherUserId);
+    },
+
+    subscribeToMessages: (userId1: string, userId2: string, callback: (messages: Message[]) => void) => {
+        return dbService.subscribeToMessages(userId1, userId2, callback);
     },
 
     getConversations: async (currentUserId: string): Promise<string[]> => {

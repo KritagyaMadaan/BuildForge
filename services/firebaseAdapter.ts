@@ -175,6 +175,10 @@ export const db = {
         return await dbService.getUser(uid);
     },
 
+    subscribeToUser: (uid: string, callback: (user: UserProfile | null) => void) => {
+        return dbService.subscribeToUser(uid, callback);
+    },
+
     // ===== USER OPERATIONS =====
 
     getDevelopers: async (): Promise<UserProfile[]> => {
@@ -269,8 +273,19 @@ export const db = {
 
     getPosts: async (type: string, requesterRole?: UserRole, requesterId?: string): Promise<Post[]> => {
         // For IDEA_SUBMISSION, DELIVERY, and SPRINT_UPDATE types, show all statuses
-        // This allows founders to see their own pending ideas and ensures updates are always visible
-        if (type === 'IDEA_SUBMISSION' || type === 'DELIVERY' || type === 'SPRINT_UPDATE') {
+
+        // SPECIAL CASE: SPRINT_UPDATE
+        // We now store these in a separate 'updates' collection, but some exist in 'posts'.
+        // We merge them for backward compatibility.
+        if (type === 'SPRINT_UPDATE') {
+            const oldUpdates = await dbService.getPosts('SPRINT_UPDATE');
+            const newUpdates = await dbService.getUpdates();
+            const allUpdates = [...oldUpdates, ...newUpdates];
+            // Sort combined list by timestamp desc
+            return allUpdates.sort((a, b) => b.timestamp - a.timestamp);
+        }
+
+        if (type === 'IDEA_SUBMISSION' || type === 'DELIVERY') {
             const verifiedPosts = await dbService.getPosts(type, 'VERIFIED');
             const pendingPosts = await dbService.getPosts(type, 'PENDING');
             const rejectedPosts = await dbService.getPosts(type, 'REJECTED');
@@ -299,6 +314,12 @@ export const db = {
     },
 
     createPost: async (post: Omit<Post, 'id' | 'timestamp' | 'likes' | 'comments' | 'applicants' | 'team'>): Promise<void> => {
+        // Redirect SPRINT_UPDATE to the new 'updates' collection
+        if (post.type === 'SPRINT_UPDATE') {
+            await dbService.createUpdate(post);
+            return;
+        }
+
         const postWithStatus = {
             ...post,
             status: post.status || 'PENDING',

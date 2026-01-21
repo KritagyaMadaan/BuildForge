@@ -517,7 +517,7 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
           {post.schemaImage && (
             <div className="mt-4 pt-4 border-t border-slate-200">
               <h4 className="text-xs font-bold text-slate-400 uppercase mb-2 flex items-center gap-2">
-                <FileText size={12} /> Architecture Document
+                <FileText size={12} /> Documentation / Links
               </h4>
               <a
                 href={post.schemaImage}
@@ -525,7 +525,7 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
                 rel="noopener noreferrer"
                 className="text-sm font-bold text-brand-blue hover:underline flex items-center gap-1"
               >
-                View Architecture Diagram <ExternalLink size={12} />
+                View Project Documentation <ExternalLink size={12} />
               </a>
             </div>
           )}
@@ -638,19 +638,30 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
               onClick={() => setShowArchitecture(!showArchitecture)}
               className="w-full py-2 bg-white border border-slate-300 rounded-xl text-xs font-bold text-slate-700 hover:bg-slate-50 flex items-center justify-center gap-2"
             >
-              <FileCode size={14} /> {showArchitecture ? 'Hide Architecture Doc' : 'View Architecture Doc'}
+              <FileCode size={14} /> {showArchitecture ? 'Hide Documentation / Links' : 'View Documentation / Links'}
             </button>
 
             {showArchitecture && post.mvp?.schemaImage && (
               <div className="mt-4 border-t border-slate-200 pt-3 animate-fade-in-up">
-                <p className="text-xs font-bold text-slate-400 uppercase mb-2">Schema / Architecture Diagram</p>
-                <div className="rounded-xl overflow-hidden border border-slate-200 bg-white">
-                  <img
-                    src={post.mvp.schemaImage}
-                    alt="Schema Diagram"
-                    className="w-full h-auto object-cover max-h-60 hover:max-h-full transition-all cursor-pointer"
-                    onClick={() => window.open(post.mvp?.schemaImage!!, '_blank')}
-                  />
+                <p className="text-xs font-bold text-slate-400 uppercase mb-2">Project Documentation / Links</p>
+                <div className="rounded-xl p-4 bg-white border border-slate-200 flex items-center justify-between">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-lg bg-blue-50 flex items-center justify-center text-brand-blue">
+                      <FileText size={20} />
+                    </div>
+                    <div>
+                      <p className="text-sm font-bold text-slate-800">External Resource</p>
+                      <p className="text-xs text-slate-400 truncate max-w-[200px]">{post.mvp.schemaImage}</p>
+                    </div>
+                  </div>
+                  <a
+                    href={post.mvp.schemaImage}
+                    target="_blank"
+                    rel="noopener noreferrer"
+                    className="p-2 bg-slate-900 text-white rounded-lg hover:bg-slate-800 transition-colors"
+                  >
+                    <ExternalLink size={16} />
+                  </a>
                 </div>
               </div>
             )}
@@ -851,7 +862,7 @@ const NetworkingView: React.FC<{ currentUser: UserProfile, onMessage: (userId: s
       setUsers(connectedUsers);
     };
     fetchUsers();
-  }, [currentUser]);
+  }, [currentUser?.uid, currentUser?.role]);
 
   return (
     <div className="max-w-4xl mx-auto animate-fade-in-up">
@@ -953,22 +964,18 @@ const MessagesView: React.FC<{ currentUser: UserProfile, initialChatId?: string 
       setConversations(validConvos);
     };
     loadConversations();
-  }, [currentUser]);
+  }, [currentUser?.uid]);
 
   useEffect(() => {
-    if (activeChatId) {
-      const loadMessages = async () => {
-        const msgs = await db.getMessages(currentUser.uid, activeChatId);
-        setMessages(msgs);
-      };
+    if (!activeChatId) return;
 
-      loadMessages();
-      const interval = setInterval(() => {
-        loadMessages();
-      }, 2000);
-      return () => clearInterval(interval);
-    }
-  }, [activeChatId, currentUser]);
+    // Use a real-time listener instead of polling to save Firestore reads
+    const unsubscribe = db.subscribeToMessages(currentUser.uid, activeChatId, (msgs) => {
+      setMessages(msgs);
+    });
+
+    return () => unsubscribe();
+  }, [activeChatId, currentUser?.uid]);
 
   useEffect(() => {
     messagesEndRef.current?.scrollIntoView({ behavior: 'smooth' });
@@ -977,8 +984,7 @@ const MessagesView: React.FC<{ currentUser: UserProfile, initialChatId?: string 
   const handleSend = async () => {
     if (!inputText.trim() || !activeChatId) return;
     await db.sendMessage(currentUser.uid, activeChatId, inputText);
-    const msgs = await db.getMessages(currentUser.uid, activeChatId);
-    setMessages(msgs);
+    // No manual fetch needed as the subscribeToMessages listener handles it
     setInputText('');
   };
 
@@ -1263,15 +1269,15 @@ const AdminDashboard: React.FC<{ currentUser: UserProfile }> = ({ currentUser })
 
   return (
     <div className="max-w-4xl mx-auto animate-fade-in-up">
-      <div className="flex justify-between items-center mb-6">
+      <div className="flex flex-col md:flex-row justify-between items-start md:items-center gap-4 mb-6">
         <h2 className="text-2xl font-black text-slate-800 flex items-center gap-2">
           <Shield className="text-brand-orange" />
           {currentUser.role === UserRole.SUPER_ADMIN ? 'Super Admin Control' : 'Platform Lead Dashboard'}
         </h2>
-        <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-100 flex gap-1">
-          <button onClick={() => { setViewMode('IDEAS'); loadData(); }} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${viewMode === 'IDEAS' ? 'bg-brand-dark text-white' : 'text-slate-500 hover:bg-slate-50'}`}>Pending Ideas</button>
-          <button onClick={() => { setViewMode('USERS'); loadData(); }} className={`px-4 py-2 rounded-lg text-xs font-bold transition-colors ${viewMode === 'USERS' ? 'bg-brand-dark text-white' : 'text-slate-500 hover:bg-slate-50'}`}>Board/Deboard Users</button>
-          <button onClick={loadData} className="px-4 py-2 rounded-lg text-xs font-bold text-brand-blue hover:bg-blue-50 transition-colors flex items-center gap-1 border border-blue-100">
+        <div className="bg-white p-1 rounded-xl shadow-sm border border-slate-100 flex flex-wrap gap-1 w-full md:w-auto">
+          <button onClick={() => { setViewMode('IDEAS'); loadData(); }} className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold transition-colors ${viewMode === 'IDEAS' ? 'bg-brand-dark text-white' : 'text-slate-500 hover:bg-slate-50'}`}>Pending Ideas</button>
+          <button onClick={() => { setViewMode('USERS'); loadData(); }} className={`flex-1 md:flex-none px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold transition-colors ${viewMode === 'USERS' ? 'bg-brand-dark text-white' : 'text-slate-500 hover:bg-slate-50'}`}>Board/Deboard Users</button>
+          <button onClick={loadData} className="px-4 py-2 rounded-lg text-[10px] md:text-xs font-bold text-brand-blue hover:bg-blue-50 transition-colors flex items-center justify-center gap-1 border border-blue-100">
             <RefreshCcw size={14} /> Refresh
           </button>
         </div>
@@ -1432,12 +1438,18 @@ const AdminUserRow = ({ initialUser, onToggleBlock }: { initialUser: UserProfile
 const App: React.FC = () => {
   const [isSuperAdminMode, setIsSuperAdminMode] = useState(false);
 
-  // Session Persistence Removed by User Request
-  const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
+  // Session Persistence with local caching to save Firestore reads
+  const [currentUser, setCurrentUser] = useState<UserProfile | null>(() => {
+    const cached = localStorage.getItem('squadran_user');
+    return cached ? JSON.parse(cached) : null;
+  });
   const [developers, setDevelopers] = useState<UserProfile[]>([]);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
   const [googleDeveloperResume, setGoogleDeveloperResume] = useState('');
+  const [googleFounderStartupName, setGoogleFounderStartupName] = useState('');
+  const [googleFounderIdea, setGoogleFounderIdea] = useState('');
   const [isCapturingGoogleResume, setIsCapturingGoogleResume] = useState(false);
+  const [isCapturingGoogleFounder, setIsCapturingGoogleFounder] = useState(false);
 
   // Clear profile view on logout
   useEffect(() => {
@@ -1459,46 +1471,52 @@ const App: React.FC = () => {
     let userProfileUnsub: (() => void) | null = null;
 
     // FORCE LOGOUT ON RELOAD (User Request)
-    // This overrides Firebase's default persistence
+    // Strict Mode: Only clear session if explicitly requested or if auth is lost
+    // (Disabled the auto-logout on refresh to save Firestore reads/writes)
+    /*
     signOut(auth).then(() => {
       console.log("Session cleared on reload (Strict Mode)");
       setCurrentUser(null);
       setIsSuperAdminMode(false);
     });
+    */
 
     // Persist Login State Sync with Firebase
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      // Clean up previous profile listener if exists
-      if (userProfileUnsub) {
-        userProfileUnsub();
-        userProfileUnsub = null;
-      }
-
       if (user) {
-        // If we have a firebase user, always prefer that (truth from server)
         console.log("Auth State Verified:", user.email);
 
-        // Subscribe to real-time updates for the current user
-        userProfileUnsub = db.subscribeToUser(user.uid, (userProfile) => {
-          if (userProfile) {
-            setCurrentUser(userProfile);
-            if (userProfile.role === UserRole.SUPER_ADMIN) setIsSuperAdminMode(true);
-
-            // Handle blocked status in real-time
-            if (userProfile.blocked) {
-              signOut(auth);
-              setCurrentUser(null);
-              alert("Access Denied: Your account has been suspended.");
-              window.location.reload();
-            }
-          } else {
-            // User exists in Auth but not in DB? Rare case.
+        // Cache Check: Don't read from Firestore if we already have it in localStorage
+        const cached = localStorage.getItem('squadran_user');
+        if (cached) {
+          const profile = JSON.parse(cached);
+          if (profile.uid === user.uid) {
+            setCurrentUser(profile);
+            if (profile.role === UserRole.SUPER_ADMIN) setIsSuperAdminMode(true);
+            return;
           }
-        });
+        }
+
+        // Use getDoc() instead of onSnapshot() to save reads
+        const userProfile = await db.getUser(user.uid);
+        if (userProfile) {
+          setCurrentUser(userProfile);
+          localStorage.setItem('squadran_user', JSON.stringify(userProfile));
+          if (userProfile.role === UserRole.SUPER_ADMIN) setIsSuperAdminMode(true);
+
+          if (userProfile.blocked) {
+            signOut(auth);
+            setCurrentUser(null);
+            localStorage.removeItem('squadran_user');
+            alert("Access Denied: Your account has been suspended.");
+            window.location.reload();
+          }
+        }
+      } else {
+        // Explicitly logged out or no session
+        setCurrentUser(null);
+        localStorage.removeItem('squadran_user');
       }
-      // If no firebase user, we DO NOT clear current user immediately
-      // because they might be a "Mock User" from the recovery fallback.
-      // Logout is now explicit.
     });
 
     loadDevelopers();
@@ -1513,11 +1531,11 @@ const App: React.FC = () => {
     if (!currentUser) return;
 
     const updateHeartbeat = async () => {
-      // Update lastSeen every minute
+      // Use direct dbService to avoid the adapter's extra getUser() call
+      // and prevent triggering unnecessary state updates from the adapter level
+      // @ts-ignore - reaching into internal db if necessary, or just using db.updateUser
       await db.updateUser(currentUser.uid, {
         lastSeen: Date.now(),
-        // We ensure status is ONLINE if we are active, unless explicitly hidden (future proofing)
-        // For now, we just update lastSeen. The UI decides if "ONLINE" based on recency.
         status: 'ONLINE'
       });
     };
@@ -1525,10 +1543,10 @@ const App: React.FC = () => {
     // Initial call
     updateHeartbeat();
 
-    // Interval
-    const interval = setInterval(updateHeartbeat, 10 * 1000); // 10 seconds
+    // Interval - Change to 60 seconds to save Firestore writes/reads
+    const interval = setInterval(updateHeartbeat, 60 * 1000);
     return () => clearInterval(interval);
-  }, [currentUser?.uid]); // Only restart if user changes
+  }, [currentUser?.uid]);
 
   const [currentView, setCurrentView] = useState<ViewType>(ViewType.SPRINT_HUB);
   const [showCreateModal, setShowCreateModal] = useState(false);
@@ -1709,7 +1727,7 @@ const App: React.FC = () => {
     // Prevent UI flash/glitch by clearing posts immediately when view changes
     setPosts([]);
     refreshPosts();
-  }, [currentView, currentUser]);
+  }, [currentView, currentUser?.uid, currentUser?.role]);
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -2089,7 +2107,7 @@ const App: React.FC = () => {
             <MessagesView currentUser={currentUser} initialChatId={directMessageTarget || undefined} />
           ) : (
             <div className="max-w-3xl mx-auto">
-              <header className="flex justify-between items-end mb-8">
+              <header className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 mb-8">
                 <div>
                   <h1 className="text-3xl font-black text-slate-900 mb-1">
                     Squadran BuildForge
@@ -2101,7 +2119,7 @@ const App: React.FC = () => {
                 {(currentView === ViewType.SPRINT_HUB || currentView === ViewType.LAUNCHPAD) && (
                   <>
                     {currentView === ViewType.SPRINT_HUB && currentUser.role === UserRole.FOUNDER && (
-                      <button onClick={() => { setSubmissionType('UPDATE'); setShowCreateModal(true); }} className="text-white px-5 py-3 rounded-xl font-bold flex items-center gap-2 hover:opacity-90 transition-transform hover:scale-105 shadow-lg bg-brand-blue">
+                      <button onClick={() => { setSubmissionType('UPDATE'); setShowCreateModal(true); }} className="w-full md:w-auto text-white px-5 py-3 rounded-xl font-bold flex items-center justify-center gap-2 hover:opacity-90 transition-transform hover:scale-105 shadow-lg bg-brand-blue">
                         <Plus size={20} />
                         Submit Idea
                       </button>
@@ -2143,12 +2161,32 @@ const App: React.FC = () => {
         </main>
 
         {/* Mobile Nav */}
-        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t p-3 flex justify-around z-30">
-          {currentUser.role !== UserRole.DEVELOPER && <button onClick={() => setCurrentView(ViewType.SPRINT_HUB)} className="p-2 rounded-xl text-slate-400"><LayoutDashboard size={24} /></button>}
-          {currentUser.role === UserRole.DEVELOPER && <button onClick={() => setCurrentView(ViewType.DEV_MARKET)} className="p-2 rounded-xl text-slate-400"><Code2 size={24} /></button>}
-          <button onClick={() => setCurrentView(ViewType.LAUNCHPAD)} className="p-2 rounded-xl text-slate-400"><Rocket size={24} /></button>
-          <button onClick={() => setCurrentView(ViewType.MESSAGES)} className="p-2 rounded-xl text-slate-400"><MessageSquare size={24} /></button>
-          <button onClick={() => setCurrentView((currentUser.role === UserRole.LEAD || currentUser.role === UserRole.SUPER_ADMIN) ? ViewType.ADMIN_DASHBOARD : ViewType.USER_DASHBOARD)} className="p-2 rounded-xl text-slate-400"><Settings size={24} /></button>
+        <div className="md:hidden fixed bottom-0 left-0 right-0 bg-white border-t px-2 py-3 flex justify-between items-center z-30 shadow-[0_-4px_10px_rgba(0,0,0,0.05)]">
+          {currentUser.role !== UserRole.DEVELOPER && (
+            <button onClick={() => setCurrentView(ViewType.SPRINT_HUB)} className={`p-2 rounded-xl transition-all ${currentView === ViewType.SPRINT_HUB ? 'bg-brand-blue/10 text-brand-blue' : 'text-slate-400'}`}>
+              <LayoutDashboard size={20} />
+            </button>
+          )}
+          {currentUser.role === UserRole.DEVELOPER && (
+            <button onClick={() => setCurrentView(ViewType.DEV_MARKET)} className={`p-2 rounded-xl transition-all ${currentView === ViewType.DEV_MARKET ? 'bg-brand-blue/10 text-brand-blue' : 'text-slate-400'}`}>
+              <Code2 size={20} />
+            </button>
+          )}
+          <button onClick={() => setCurrentView(ViewType.LAUNCHPAD)} className={`p-2 rounded-xl transition-all ${currentView === ViewType.LAUNCHPAD ? 'bg-brand-blue/10 text-brand-blue' : 'text-slate-400'}`}>
+            <Rocket size={20} />
+          </button>
+          <button onClick={() => setCurrentView(ViewType.UPDATES)} className={`p-2 rounded-xl transition-all ${currentView === ViewType.UPDATES ? 'bg-brand-blue/10 text-brand-blue' : 'text-slate-400'}`}>
+            <Bell size={20} />
+          </button>
+          <button onClick={() => setCurrentView(ViewType.NETWORKING)} className={`p-2 rounded-xl transition-all ${currentView === ViewType.NETWORKING ? 'bg-brand-blue/10 text-brand-blue' : 'text-slate-400'}`}>
+            <Users size={20} />
+          </button>
+          <button onClick={() => setCurrentView(ViewType.MESSAGES)} className={`p-2 rounded-xl transition-all ${currentView === ViewType.MESSAGES ? 'bg-brand-blue/10 text-brand-blue' : 'text-slate-400'}`}>
+            <MessageSquare size={20} />
+          </button>
+          <button onClick={() => setCurrentView((currentUser.role === UserRole.LEAD || currentUser.role === UserRole.SUPER_ADMIN) ? ViewType.ADMIN_DASHBOARD : ViewType.USER_DASHBOARD)} className={`p-2 rounded-xl transition-all ${currentView === ViewType.ADMIN_DASHBOARD || currentView === ViewType.USER_DASHBOARD ? 'bg-brand-blue/10 text-brand-blue' : 'text-slate-400'}`}>
+            <Settings size={20} />
+          </button>
         </div>
 
         {/* AI Assistant FAB */}
@@ -2201,15 +2239,15 @@ const App: React.FC = () => {
                     </div>
 
                     <div className="space-y-2">
-                      <label htmlFor="schemaImage" className="text-sm font-bold text-slate-700 block">Schema Diagram URL (Optional)</label>
+                      <label htmlFor="schemaImage" className="text-sm font-bold text-slate-700 block">Documentation / Links (Optional)</label>
                       <input
                         type="text"
                         id="schemaImage"
                         name="schemaImage"
-                        placeholder="https://imgur.com/..."
+                        placeholder="https://docs.google.com/..."
                         className="w-full p-3 bg-slate-50 rounded-xl font-medium outline-none border-2 border-transparent focus:border-brand-blue/30 focus:bg-white transition-all text-sm"
                       />
-                      <p className="text-xs text-slate-400 font-medium">Link to your database schema or architecture diagram</p>
+                      <p className="text-xs text-slate-400 font-medium">Link to your project documentation, PRD, or other resources</p>
                     </div>
                   </>
                 )}
@@ -2269,7 +2307,7 @@ const App: React.FC = () => {
       {/* Google Role Selection Modal */}
       {pendingGoogleUser && (
         <div className="fixed inset-0 z-[10001] bg-slate-900/50 backdrop-blur-sm flex items-center justify-center p-4">
-          <div className="bg-white w-full max-w-md rounded-[2rem] p-8 shadow-2xl animate-fade-in-up">
+          <div className="bg-white w-full max-w-md rounded-[2rem] p-8 shadow-2xl animate-fade-in-up max-h-[90vh] overflow-y-auto custom-scrollbar">
             <div className="flex justify-between items-center mb-6">
               <h3 className="text-xl font-black text-slate-800">Welcome!</h3>
               <div className="w-8 h-8 rounded-full bg-slate-100 flex items-center justify-center overflow-hidden">
@@ -2286,42 +2324,102 @@ const App: React.FC = () => {
             </p>
 
             <div className="space-y-4">
-              <button
-                onClick={async () => {
-                  const result = await db.completeGoogleSignup(pendingGoogleUser, UserRole.FOUNDER);
-                  if (result.user) {
-                    setCurrentUser(result.user);
-                    setPendingGoogleUser(null);
-                    setCurrentView(ViewType.SPRINT_HUB);
-                  } else {
-                    alert("Account creation failed: " + result.error);
-                  }
-                }}
-                className="w-full p-4 rounded-2xl border-2 border-slate-100 hover:border-brand-blue hover:bg-blue-50/50 transition-all flex items-center gap-4 text-left group"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-blue-100 text-brand-blue flex items-center justify-center shrink-0 shadow-sm group-hover:scale-110 transition-transform"><Rocket size={24} /></div>
-                <div>
-                  <h3 className="font-black text-slate-800 text-lg">Founder</h3>
-                  <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">I have a startup idea</p>
-                </div>
-              </button>
+              {!isCapturingGoogleFounder && !isCapturingGoogleResume && (
+                <>
+                  <button
+                    onClick={async () => {
+                      setIsCapturingGoogleFounder(true);
+                    }}
+                    className="w-full p-4 rounded-2xl border-2 border-slate-100 hover:border-brand-blue hover:bg-blue-50/50 transition-all flex items-center gap-4 text-left group"
+                  >
+                    <div className="w-14 h-14 rounded-2xl bg-blue-100 text-brand-blue flex items-center justify-center shrink-0 shadow-sm group-hover:scale-110 transition-transform"><Rocket size={24} /></div>
+                    <div>
+                      <h3 className="font-black text-slate-800 text-lg">Founder</h3>
+                      <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">I have a startup idea</p>
+                    </div>
+                  </button>
 
-              <button
-                onClick={async () => {
-                  setIsCapturingGoogleResume(true);
-                }}
-                className="w-full p-4 rounded-2xl border-2 border-slate-100 hover:border-brand-orange hover:bg-orange-50/50 transition-all flex items-center gap-4 text-left group"
-              >
-                <div className="w-14 h-14 rounded-2xl bg-orange-100 text-brand-orange flex items-center justify-center shrink-0 shadow-sm group-hover:scale-110 transition-transform"><Code2 size={24} /></div>
-                <div>
-                  <h3 className="font-black text-slate-800 text-lg">Developer</h3>
-                  <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">I want to build projects</p>
+                  <button
+                    onClick={async () => {
+                      setIsCapturingGoogleResume(true);
+                    }}
+                    className="w-full p-4 rounded-2xl border-2 border-slate-100 hover:border-brand-orange hover:bg-orange-50/50 transition-all flex items-center gap-4 text-left group"
+                  >
+                    <div className="w-14 h-14 rounded-2xl bg-orange-100 text-brand-orange flex items-center justify-center shrink-0 shadow-sm group-hover:scale-110 transition-transform"><Code2 size={24} /></div>
+                    <div>
+                      <h3 className="font-black text-slate-800 text-lg">Developer</h3>
+                      <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">I want to build projects</p>
+                    </div>
+                  </button>
+                </>
+              )}
+
+              {/* Conditional Founder Details for Google */}
+              {isCapturingGoogleFounder && (
+                <div className="mt-4 p-6 bg-slate-50 rounded-2xl border-2 border-brand-blue/20 animate-fade-in-up">
+                  <div className="flex items-center gap-2 mb-4 text-brand-blue">
+                    <Rocket size={18} />
+                    <span className="font-black uppercase tracking-wider text-xs">Founder Profile</span>
+                  </div>
+                  <div className="space-y-4">
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase block mb-2 font-black">Startup Name (Compulsory)</label>
+                      <input
+                        required
+                        value={googleFounderStartupName}
+                        onChange={(e) => setGoogleFounderStartupName(e.target.value)}
+                        placeholder="e.g. Squadran"
+                        className="w-full p-4 bg-white rounded-xl font-bold outline-none border-2 border-brand-blue focus:ring-4 focus:ring-brand-blue/10"
+                      />
+                    </div>
+                    <div>
+                      <label className="text-xs font-bold text-slate-500 uppercase block mb-2 font-black">Startup Idea (Compulsory)</label>
+                      <textarea
+                        required
+                        rows={3}
+                        value={googleFounderIdea}
+                        onChange={(e) => setGoogleFounderIdea(e.target.value)}
+                        placeholder="What are you building?"
+                        className="w-full p-4 bg-white rounded-xl font-bold outline-none border-2 border-brand-blue focus:ring-4 focus:ring-brand-blue/10"
+                      />
+                    </div>
+                    <div className="flex flex-col gap-2">
+                      <button
+                        onClick={async () => {
+                          if (!googleFounderStartupName.trim() || !googleFounderIdea.trim()) {
+                            alert("Startup Name and Idea are compulsory!");
+                            return;
+                          }
+                          const result = await db.completeGoogleSignup(pendingGoogleUser!!, UserRole.FOUNDER, {
+                            startupName: googleFounderStartupName,
+                            startupDescription: googleFounderIdea
+                          });
+                          if (result.user) {
+                            setCurrentUser(result.user);
+                            setPendingGoogleUser(null);
+                            setIsCapturingGoogleFounder(false);
+                            setCurrentView(ViewType.SPRINT_HUB);
+                          } else {
+                            alert("Account creation failed: " + result.error);
+                          }
+                        }}
+                        className="w-full py-4 bg-brand-blue text-white rounded-xl font-black shadow-lg hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                      >
+                        Access Dashboard <ArrowRight size={20} />
+                      </button>
+                      <button onClick={() => setIsCapturingGoogleFounder(false)} className="py-2 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors">Change Role</button>
+                    </div>
+                  </div>
                 </div>
-              </button>
+              )}
 
               {/* Conditional Resume Input for Google Developer */}
               {isCapturingGoogleResume && (
                 <div className="mt-4 p-6 bg-slate-50 rounded-2xl border-2 border-brand-orange/20 animate-fade-in-up">
+                  <div className="flex items-center gap-2 mb-4 text-brand-orange">
+                    <Code2 size={18} />
+                    <span className="font-black uppercase tracking-wider text-xs">Developer Profile</span>
+                  </div>
                   <label className="text-xs font-bold text-slate-500 uppercase block mb-2">Compulsory Resume / CV URL</label>
                   <input
                     type="url"
@@ -2331,26 +2429,29 @@ const App: React.FC = () => {
                     placeholder="https://drive.google.com/..."
                     className="w-full p-4 bg-white rounded-xl font-bold outline-none border-2 border-brand-orange focus:ring-4 focus:ring-brand-orange/10 mb-4"
                   />
-                  <button
-                    onClick={async () => {
-                      if (!googleDeveloperResume.trim()) {
-                        alert("Resume URL is compulsory for developers!");
-                        return;
-                      }
-                      const result = await db.completeGoogleSignup(pendingGoogleUser!!, UserRole.DEVELOPER, googleDeveloperResume);
-                      if (result.user) {
-                        setCurrentUser(result.user);
-                        setPendingGoogleUser(null);
-                        setIsCapturingGoogleResume(false);
-                        setCurrentView(ViewType.DEV_MARKET);
-                      } else {
-                        alert("Account creation failed: " + result.error);
-                      }
-                    }}
-                    className="w-full py-4 bg-brand-orange text-white rounded-xl font-black shadow-lg hover:opacity-90 transition-all flex items-center justify-center gap-2"
-                  >
-                    Finish Registration <ArrowRight size={20} />
-                  </button>
+                  <div className="flex flex-col gap-2">
+                    <button
+                      onClick={async () => {
+                        if (!googleDeveloperResume.trim()) {
+                          alert("Resume URL is compulsory for developers!");
+                          return;
+                        }
+                        const result = await db.completeGoogleSignup(pendingGoogleUser!!, UserRole.DEVELOPER, { resumeUrl: googleDeveloperResume });
+                        if (result.user) {
+                          setCurrentUser(result.user);
+                          setPendingGoogleUser(null);
+                          setIsCapturingGoogleResume(false);
+                          setCurrentView(ViewType.DEV_MARKET);
+                        } else {
+                          alert("Account creation failed: " + result.error);
+                        }
+                      }}
+                      className="w-full py-4 bg-brand-orange text-white rounded-xl font-black shadow-lg hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                    >
+                      Finish Registration <ArrowRight size={20} />
+                    </button>
+                    <button onClick={() => setIsCapturingGoogleResume(false)} className="py-2 text-xs font-bold text-slate-400 hover:text-slate-600 transition-colors">Change Role</button>
+                  </div>
                 </div>
               )}
             </div>
@@ -2359,7 +2460,10 @@ const App: React.FC = () => {
               onClick={async () => {
                 setPendingGoogleUser(null);
                 setIsCapturingGoogleResume(false);
+                setIsCapturingGoogleFounder(false);
                 setGoogleDeveloperResume('');
+                setGoogleFounderStartupName('');
+                setGoogleFounderIdea('');
                 await signOut(auth);
               }}
               className="w-full py-4 text-slate-400 font-bold hover:text-red-500 text-sm mt-2 transition-colors"

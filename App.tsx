@@ -16,7 +16,7 @@ import {
 
 // --- Constants ---
 const SQUADRAN_LOGO_URL = "/logo-squadran.jpg?v=2";
-const SUPPORT_EMAIL_PLACEHOLDER = "support@buildforge.io";
+const SUPPORT_EMAIL_PLACEHOLDER = "operations@squadrancampus.in";
 
 // --- Animation Component ---
 const CursorBloop = () => {

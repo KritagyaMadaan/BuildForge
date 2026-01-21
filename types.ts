@@ -66,6 +66,8 @@ export interface UserProfile {
   githubUrl?: string;
   timeAvailability?: string;
   experience?: string;
+  status?: 'ONLINE' | 'OFFLINE';
+  lastSeen?: number;
 }
 
 export interface Comment {

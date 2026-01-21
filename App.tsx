@@ -1450,6 +1450,7 @@ const App: React.FC = () => {
   });
   const [posts, setPosts] = useState<Post[]>([]);
   const [contactForm, setContactForm] = useState({ name: '', email: '', message: '' });
+  const [isSubmitting, setIsSubmitting] = useState(false);
 
   // Update formData helper
   const updateForm = (key: string, value: string) => {
@@ -1549,11 +1550,42 @@ const App: React.FC = () => {
     refreshPosts();
   }, [currentView, currentUser]);
 
-  const handleContactSubmit = (e: React.FormEvent) => {
+  const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (contactForm.name && contactForm.email && contactForm.message) {
-      alert(`Message sent to ${SUPPORT_EMAIL_PLACEHOLDER}. We will contact you shortly.`);
-      setContactForm({ name: '', email: '', message: '' });
+      setIsSubmitting(true);
+      try {
+        const response = await fetch(`https://formsubmit.co/ajax/${SUPPORT_EMAIL_PLACEHOLDER}`, {
+          method: "POST",
+          headers: {
+            'Content-Type': 'application/json',
+            'Accept': 'application/json'
+          },
+          body: JSON.stringify({
+            name: contactForm.name,
+            email: contactForm.email,
+            message: contactForm.message,
+            _subject: `Support Request from ${contactForm.name}`,
+            _template: 'table',
+            _captcha: 'false'
+          })
+        });
+
+        const result = await response.json();
+
+        if (response.ok) {
+          alert("Message sent successfully! We will get back to you shortly.");
+          setContactForm({ name: '', email: '', message: '' });
+        } else {
+          console.error("FormSubmit Error:", result);
+          alert("Something went wrong. Please try again or email us directly.");
+        }
+      } catch (error) {
+        console.error("Submission Error:", error);
+        alert("Network error. Please try again later.");
+      } finally {
+        setIsSubmitting(false);
+      }
     } else {
       alert("Please fill all fields");
     }
@@ -2412,8 +2444,8 @@ const App: React.FC = () => {
                 <label className="text-xs font-bold text-slate-400 ml-2 mb-2 block uppercase">Message</label>
                 <textarea required rows={4} value={contactForm.message} onChange={e => setContactForm({ ...contactForm, message: e.target.value })} className="w-full p-4 bg-slate-50 rounded-xl font-medium outline-none resize-none focus:ring-2 focus:ring-brand-blue/20" placeholder="How can we help?"></textarea>
               </div>
-              <button type="submit" className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 shadow-lg flex items-center justify-center gap-2">
-                <Send size={18} /> Send Message
+              <button disabled={isSubmitting} type="submit" className="w-full py-4 bg-slate-900 text-white rounded-xl font-bold hover:bg-slate-800 shadow-lg flex items-center justify-center gap-2 disabled:opacity-50 disabled:cursor-wait">
+                {isSubmitting ? <><RefreshCcw size={18} className="animate-spin" /> Sending...</> : <><Send size={18} /> Send Message</>}
               </button>
               <p className="text-center text-xs text-slate-400 mt-4">
                 Emails are sent to <span className="font-bold text-slate-500">{SUPPORT_EMAIL_PLACEHOLDER}</span>

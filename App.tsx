@@ -80,11 +80,10 @@ const UserAvatar = ({ uid, size = "md", showName = false }: { uid: string, size?
   const [user, setUser] = useState<UserProfile | null>(null);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      const u = await db.getUserById(uid);
-      setUser(u || null);
-    };
-    fetchUser();
+    const unsubscribe = db.subscribeToUser(uid, (u) => {
+      setUser(u);
+    });
+    return () => unsubscribe();
   }, [uid]);
 
   if (!user) return <div className="w-10 h-10 bg-slate-200 rounded-full animate-pulse" />;
@@ -130,11 +129,10 @@ const UserBadge = ({ uid, onRemove, showRemove = false }: { uid: string, onRemov
   const [user, setUser] = useState<UserProfile | null>(null);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      const u = await db.getUserById(uid);
-      setUser(u || null);
-    };
-    fetchUser();
+    const unsubscribe = db.subscribeToUser(uid, (u) => {
+      setUser(u);
+    });
+    return () => unsubscribe();
   }, [uid]);
 
   if (!user) return null;
@@ -676,11 +674,10 @@ const UserListItem = ({ uid, isActive, onClick }: { uid: string, isActive: boole
   const [user, setUser] = useState<UserProfile | null>(null);
 
   useEffect(() => {
-    const fetchUser = async () => {
-      const u = await db.getUserById(uid);
-      setUser(u || null);
-    };
-    fetchUser();
+    const unsubscribe = db.subscribeToUser(uid, (u) => {
+      setUser(u);
+    });
+    return () => unsubscribe();
   }, [uid]);
 
   if (!user) return null;
@@ -739,42 +736,59 @@ const NetworkingView: React.FC<{ currentUser: UserProfile, onMessage: (userId: s
           </div>
         )}
         {users.map(user => (
-          <div key={user.uid} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex gap-4">
-            <div className="w-16 h-16 rounded-full bg-slate-200 overflow-hidden shrink-0 relative">
-              <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
-              {(user.status !== 'OFFLINE' && user.lastSeen && (Date.now() - user.lastSeen < 30 * 1000)) && (
-                <div className="absolute bottom-1 right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
-              )}
-            </div>
-            <div className="flex-1">
-              <div className="flex justify-between items-start">
-                <div>
-                  <h3 className="font-bold text-slate-800">{user.name}</h3>
-                  <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${user.role === UserRole.DEVELOPER ? 'bg-purple-100 text-purple-600' : user.role === UserRole.LEAD ? 'bg-slate-800 text-white' : 'bg-blue-100 text-blue-600'}`}>
-                    {user.role}
-                  </span>
-                  <span className={`ml-2 text-[10px] font-bold px-2 py-1 rounded-full border border-slate-200 ${isOnline(user) ? 'bg-green-50 text-green-600 border-green-200' : 'bg-slate-100/50 text-slate-400'}`}>
-                    {isOnline(user) ? 'ONLINE' : 'OFFLINE'}
-                  </span>
-                </div>
-              </div>
-              <p className="text-xs text-slate-500 mt-2 line-clamp-2">{user.bio || user.email}</p>
-
-              <div className="flex gap-2 mt-4">
-                <button onClick={() => onMessage(user.uid)} className="flex-1 py-2 bg-brand-dark text-white text-xs font-bold rounded-lg hover:bg-slate-800 flex items-center justify-center gap-2">
-                  <MessageSquare size={14} /> Message
-                </button>
-                <a href={`mailto:${user.email || ''}`} className="flex-1 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-200 flex items-center justify-center gap-2">
-                  <Mail size={14} /> Email
-                </a>
-              </div>
-            </div>
-          </div>
+          <NetworkingUserCard key={user.uid} initialUser={user} onMessage={onMessage} />
         ))}
       </div>
     </div>
   );
 };
+
+// --- Self-Updating Networking Card ---
+const NetworkingUserCard = ({ initialUser, onMessage }: { initialUser: UserProfile, onMessage: (uid: string) => void }) => {
+  const [user, setUser] = useState<UserProfile>(initialUser);
+
+  useEffect(() => {
+    const unsubscribe = db.subscribeToUser(initialUser.uid, (u) => {
+      if (u) setUser(u);
+    });
+    return () => unsubscribe();
+  }, [initialUser.uid]);
+
+  return (
+    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex gap-4">
+      <div className="w-16 h-16 rounded-full bg-slate-200 overflow-hidden shrink-0 relative">
+        <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+        {(user.status !== 'OFFLINE' && user.lastSeen && (Date.now() - user.lastSeen < 30 * 1000)) && (
+          <div className="absolute bottom-1 right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
+        )}
+      </div>
+      <div className="flex-1">
+        <div className="flex justify-between items-start">
+          <div>
+            <h3 className="font-bold text-slate-800">{user.name}</h3>
+            <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${user.role === UserRole.DEVELOPER ? 'bg-purple-100 text-purple-600' : user.role === UserRole.LEAD ? 'bg-slate-800 text-white' : 'bg-blue-100 text-blue-600'}`}>
+              {user.role}
+            </span>
+            <span className={`ml-2 text-[10px] font-bold px-2 py-1 rounded-full border border-slate-200 ${isOnline(user) ? 'bg-green-50 text-green-600 border-green-200' : 'bg-slate-100/50 text-slate-400'}`}>
+              {isOnline(user) ? 'ONLINE' : 'OFFLINE'}
+            </span>
+          </div>
+        </div>
+        <p className="text-xs text-slate-500 mt-2 line-clamp-2">{user.bio || user.email}</p>
+
+        <div className="flex gap-2 mt-4">
+          <button onClick={() => onMessage(user.uid)} className="flex-1 py-2 bg-brand-dark text-white text-xs font-bold rounded-lg hover:bg-slate-800 flex items-center justify-center gap-2">
+            <MessageSquare size={14} /> Message
+          </button>
+          <a href={`mailto:${user.email || ''}`} className="flex-1 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-200 flex items-center justify-center gap-2">
+            <Mail size={14} /> Email
+          </a>
+        </div>
+      </div>
+    </div>
+  );
+};
+
 
 const MessagesView: React.FC<{ currentUser: UserProfile, initialChatId?: string }> = ({ currentUser, initialChatId }) => {
   const [activeChatId, setActiveChatId] = useState<string | null>(initialChatId || null);
@@ -1207,25 +1221,58 @@ const AdminDashboard: React.FC<{ currentUser: UserProfile }> = ({ currentUser })
             </thead>
             <tbody>
               {allUsers.map(user => (
-                <tr key={user.uid} className="border-b border-slate-50">
-                  <td className="p-4 font-bold text-slate-800">
-                    <UserAvatar uid={user.uid} size="sm" showName={true} />
-                  </td>
-                  <td className="p-4 text-right flex gap-2 justify-end items-center">
-                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full border mr-2 ${isOnline(user) ? 'bg-green-50 text-green-600 border-green-200' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
-                      {isOnline(user) ? 'ONLINE' : 'OFFLINE'}
-                    </span>
-                    <button onClick={() => handleToggleBlock(user.uid)} className={`px-3 py-1 rounded-lg text-xs font-bold border ${user.blocked ? 'bg-red-50 border-red-200 text-red-600' : 'bg-emerald-50 border-emerald-200 text-emerald-600'}`}>
-                      {user.blocked ? 'DEBOARDED (BANNED)' : 'BOARDED (ACTIVE)'}
-                    </button>
-                  </td>
-                </tr>
+                <AdminUserRow key={user.uid} initialUser={user} onToggleBlock={handleToggleBlock} />
               ))}
             </tbody>
           </table>
         </div>
       )}
     </div>
+  );
+};
+
+// --- Self-Updating Admin User Row ---
+const AdminUserRow = ({ initialUser, onToggleBlock }: { initialUser: UserProfile, onToggleBlock: (uid: string) => Promise<void> }) => {
+  const [user, setUser] = useState<UserProfile>(initialUser);
+
+  useEffect(() => {
+    const unsubscribe = db.subscribeToUser(initialUser.uid, (u) => {
+      if (u) setUser(u);
+    });
+    return () => unsubscribe();
+  }, [initialUser.uid]);
+
+  return (
+    <tr className="border-b border-slate-50">
+      <td className="p-4 font-bold text-slate-800">
+        {/* We use basic content here instead of UserAvatar to control layout, or use UserAvatar if desired. 
+            UserAvatar handles its own subscription so passing uid to it is redundant effectively but harmless.
+            However, we want to show text status here too. */}
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden relative">
+            <img src={user.avatar || 'https://cdn-icons-png.flaticon.com/512/847/847969.png'} alt="" className="w-full h-full object-cover" />
+            {(user.status !== 'OFFLINE' && user.lastSeen && (Date.now() - user.lastSeen < 30 * 1000)) && (
+              <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white"></div>
+            )}
+          </div>
+          <div>
+            <div className="font-bold text-slate-800 text-sm">{user.name}</div>
+            <div className="text-xs text-slate-400 font-medium">{user.role}</div>
+          </div>
+        </div>
+      </td>
+      <td className="p-4 text-right flex gap-2 justify-end items-center">
+        <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider mr-2 ${isOnline(user) ? 'bg-green-50 text-green-600 border border-green-200' : 'bg-slate-100/50 text-slate-400 border border-slate-200'}`}>
+          {isOnline(user) ? 'ONLINE' : 'OFFLINE'}
+        </span>
+        <button
+          onClick={() => onToggleBlock(user.uid)}
+          className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${user.blocked ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
+        >
+          {user.blocked ? 'Blocked' : 'Active'}
+        </button>
+      </td>
+    </tr>
   );
 };
 
@@ -1248,6 +1295,7 @@ const App: React.FC = () => {
   // Debug: Expose db to window
   useEffect(() => {
     (window as any).db = db;
+    let userProfileUnsub: (() => void) | null = null;
 
     // FORCE LOGOUT ON RELOAD (User Request)
     // This overrides Firebase's default persistence
@@ -1259,15 +1307,33 @@ const App: React.FC = () => {
 
     // Persist Login State Sync with Firebase
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
+      // Clean up previous profile listener if exists
+      if (userProfileUnsub) {
+        userProfileUnsub();
+        userProfileUnsub = null;
+      }
+
       if (user) {
         // If we have a firebase user, always prefer that (truth from server)
         console.log("Auth State Verified:", user.email);
-        const userProfile = await db.getUserById(user.uid);
-        if (userProfile) {
-          // Only update if different to avoid loops/renders, or just strict update
-          setCurrentUser(prev => (prev?.uid !== userProfile.uid ? userProfile : prev));
-          if (userProfile.role === UserRole.SUPER_ADMIN) setIsSuperAdminMode(true);
-        }
+
+        // Subscribe to real-time updates for the current user
+        userProfileUnsub = db.subscribeToUser(user.uid, (userProfile) => {
+          if (userProfile) {
+            setCurrentUser(userProfile);
+            if (userProfile.role === UserRole.SUPER_ADMIN) setIsSuperAdminMode(true);
+
+            // Handle blocked status in real-time
+            if (userProfile.blocked) {
+              signOut(auth);
+              setCurrentUser(null);
+              alert("Access Denied: Your account has been suspended.");
+              window.location.reload();
+            }
+          } else {
+            // User exists in Auth but not in DB? Rare case.
+          }
+        });
       }
       // If no firebase user, we DO NOT clear current user immediately
       // because they might be a "Mock User" from the recovery fallback.
@@ -1275,7 +1341,10 @@ const App: React.FC = () => {
     });
 
     loadDevelopers();
-    return () => unsubscribe();
+    return () => {
+      unsubscribe();
+      if (userProfileUnsub) userProfileUnsub();
+    };
   }, []);
 
   // --- HEARTBEAT EFFECT ---
@@ -2239,7 +2308,36 @@ const App: React.FC = () => {
                         const pwd = (e.target as HTMLInputElement).value;
                         const res = await db.loginSuperAdmin(pwd);
                         if (res.success && res.user) {
-                          setCurrentUser(res.user);
+                          // 3. User Data Listener
+                          // We subscribe to the user doc so that if 'status' or 'lastSeen' updates (even by our own heartbeat),
+                          // the local state reflects it immediately.
+                          const userDataUnsub = db.subscribeToUser(res.user.uid, (updatedUser) => {
+                            if (updatedUser) {
+                              setCurrentUser(updatedUser);
+                              // If the user is blocked, sign them out immediately
+                              if (updatedUser.blocked) {
+                                auth.signOut();
+                                setCurrentUser(null);
+                                window.location.reload();
+                              }
+                            }
+                          });
+
+                          // We also verify once initially to handle edge cases
+                          const userData = await db.getUserById(res.user.uid);
+
+                          if (userData) {
+                            if (userData.blocked) {
+                              await signOut(auth);
+                              alert("Access Denied: Your account has been suspended.");
+                              return;
+                            }
+                            setCurrentUser(userData);
+                          } else {
+                            // New user or deleted user logic could go here
+                            // For now we rely on the create profile flow if not found,
+                            // but typically getUser would find it if they are logged in and have a profile.
+                          }
                           setIsSuperAdminMode(true);
                           setCurrentView(ViewType.ADMIN_DASHBOARD);
                           setShowRootInput(false);

@@ -2140,7 +2140,7 @@ const App: React.FC = () => {
                 Squadran <span className="text-transparent bg-clip-text bg-gradient-to-r from-brand-orange to-brand-blue">BuildForge</span>
               </h1>
               <p className="text-2xl font-bold text-slate-600">
-                Where student ideas are forged into products.
+                Where ideas are forged into products.
               </p>
             </div>
           </div>

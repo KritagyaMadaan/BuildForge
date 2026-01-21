@@ -4,13 +4,13 @@ import { getFirestore } from 'firebase/firestore';
 import { getStorage } from 'firebase/storage';
 
 const firebaseConfig = {
-    apiKey: "AIzaSyDfleWc7HLFWECp1_mwSOjjQk5JBgdpw5Q",
-    authDomain: "buildforge-c29e1.firebaseapp.com",
-    projectId: "buildforge-c29e1",
-    storageBucket: "buildforge-c29e1.firebasestorage.app",
-    messagingSenderId: "736357935832",
-    appId: "1:736357935832:web:e36b35d6c766ad8e7f85ad",
-    measurementId: "G-9P6P1YFBK6"
+    apiKey: "AIzaSyAAKFAxjpsJf62gmPFo5wb8aRhMxuc9UMs",
+    authDomain: "buildforge-b941b.firebaseapp.com",
+    projectId: "buildforge-b941b",
+    storageBucket: "buildforge-b941b.firebasestorage.app",
+    messagingSenderId: "773147332651",
+    appId: "1:773147332651:web:8e02f5b24c061882491a6e",
+    measurementId: "G-0HLFCJG5ZD"
 };
 
 // Initialize Firebase

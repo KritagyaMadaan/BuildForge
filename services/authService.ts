@@ -19,6 +19,11 @@ export const authService = {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
+            // Clean undefined values from userData to prevent Firestore crashes
+            const cleanUserData = Object.fromEntries(
+                Object.entries(userData).filter(([_, v]) => v !== undefined)
+            );
+
             // Create user profile in Firestore
             const userProfile: UserProfile = {
                 uid: user.uid,
@@ -27,7 +32,7 @@ export const authService = {
                 role: userData.role || UserRole.FOUNDER,
                 avatar: userData.avatar || `https://ui-avatars.com/api/?name=${encodeURIComponent(userData.name || 'User')}`,
                 blocked: false,
-                ...userData
+                ...cleanUserData
             };
 
             await setDoc(doc(db, 'users', user.uid), userProfile);
@@ -95,7 +100,7 @@ export const authService = {
     },
 
     // Complete Google Sign Up with detected role
-    async createGoogleUser(firebaseUser: User, role: UserRole, resumeUrl?: string) {
+    async createGoogleUser(firebaseUser: User, role: UserRole, additionalData?: Partial<UserProfile>) {
         try {
             const userProfile: UserProfile = {
                 uid: firebaseUser.uid,
@@ -104,7 +109,7 @@ export const authService = {
                 role: role,
                 avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(firebaseUser.displayName || 'User')}`,
                 blocked: false,
-                resumeUrl: resumeUrl
+                ...additionalData
             };
 
             await setDoc(doc(db, 'users', firebaseUser.uid), userProfile);

@@ -780,9 +780,6 @@ const NetworkingUserCard = ({ initialUser, onMessage }: { initialUser: UserProfi
           <button onClick={() => onMessage(user.uid)} className="flex-1 py-2 bg-brand-dark text-white text-xs font-bold rounded-lg hover:bg-slate-800 flex items-center justify-center gap-2">
             <MessageSquare size={14} /> Message
           </button>
-          <a href={`mailto:${user.email || ''}`} className="flex-1 py-2 bg-slate-100 text-slate-600 text-xs font-bold rounded-lg hover:bg-slate-200 flex items-center justify-center gap-2">
-            <Mail size={14} /> Email
-          </a>
         </div>
       </div>
     </div>

@@ -11,7 +11,7 @@ import AIChatPanel from './components/AIChatPanel';
 import {
   GraduationCap, Users, Briefcase, FileText, Bell, Settings, LogOut,
   Home, Plus, Heart, MessageCircle, Share2, CheckCircle, XCircle,
-  Search, Trash2, Shield, Building2, Download, Sparkles, Calendar, Edit2, Save, Send, LayoutDashboard, Mail, MessageSquare, UserPlus, Ban, Lock, Unlock, Rocket, Globe, Key, PlusCircle, Palette, ExternalLink, ArrowRight, ChevronRight, Layers, Target, ArrowLeft, Hammer, Code2, Monitor, Cpu, FileCode, Eye, MessageSquareText, Lightbulb, RefreshCcw, Upload
+  Search, Trash2, Shield, Building2, Download, Sparkles, Calendar, Edit2, Save, Send, LayoutDashboard, Mail, MessageSquare, UserPlus, Ban, Lock, Unlock, Rocket, Globe, Key, PlusCircle, Palette, ExternalLink, ArrowRight, ChevronRight, Layers, Target, ArrowLeft, Hammer, Code2, Monitor, Cpu, FileCode, Eye, MessageSquareText, Lightbulb, RefreshCcw, Upload, X
 } from 'lucide-react';
 
 // --- Constants ---
@@ -125,7 +125,7 @@ const UserAvatar = ({ uid, size = "md", showName = false }: { uid: string, size?
 };
 
 // --- User Badge Component ---
-const UserBadge = ({ uid, onRemove, showRemove = false }: { uid: string, onRemove?: () => void, showRemove?: boolean }) => {
+const UserBadge = ({ uid, onRemove, showRemove = false, onClick }: { uid: string, onRemove?: () => void, showRemove?: boolean, onClick?: () => void }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
 
   useEffect(() => {
@@ -138,7 +138,10 @@ const UserBadge = ({ uid, onRemove, showRemove = false }: { uid: string, onRemov
   if (!user) return null;
 
   return (
-    <div className={`flex items-center gap-2 px-2 py-1 rounded-full text-xs font-bold border ${isOnline(user) ? 'bg-green-50 text-green-700 border-green-200' : 'bg-brand-orange/10 text-brand-orange border-brand-orange/20'}`}>
+    <div
+      className={`flex items-center gap-2 px-2 py-1 rounded-full text-xs font-bold border ${isOnline(user) ? 'bg-green-50 text-green-700 border-green-200' : 'bg-brand-orange/10 text-brand-orange border-brand-orange/20'} ${onClick ? 'cursor-pointer hover:opacity-80 transition-opacity' : ''}`}
+      onClick={onClick}
+    >
       <div className="relativePath">
         <div className="w-4 h-4 rounded-full bg-brand-orange overflow-hidden relative">
           {user.avatar ? (
@@ -167,6 +170,137 @@ const UserBadge = ({ uid, onRemove, showRemove = false }: { uid: string, onRemov
     </div>
   );
 };
+
+// --- Profile Modal Component ---
+const ProfileModal = ({ initialUser, onClose }: { initialUser: UserProfile, onClose: () => void }) => {
+  const [user, setUser] = useState<UserProfile>(initialUser);
+
+  useEffect(() => {
+    const unsubscribe = db.subscribeToUser(initialUser.uid, (u) => {
+      if (u) setUser(u);
+    });
+    return () => unsubscribe();
+  }, [initialUser.uid]);
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/50 backdrop-blur-sm" onClick={onClose}>
+      <div className="bg-white rounded-[2rem] p-8 w-full max-w-lg shadow-2xl animate-fade-in-up" onClick={(e) => e.stopPropagation()}>
+        <div className="flex justify-between items-start mb-6">
+          <h3 className="text-2xl font-black text-slate-800">Profile</h3>
+          <button onClick={onClose} className="text-slate-400 hover:text-slate-600 transition-colors">
+            <X size={24} />
+          </button>
+        </div>
+
+        <div className="flex flex-col items-center mb-6">
+          <div className="w-24 h-24 rounded-full bg-slate-100 p-1 border-2 border-brand-orange/20 overflow-hidden mb-4">
+            <img src={user.avatar || 'https://cdn-icons-png.flaticon.com/512/847/847969.png'} alt={user.name} className="w-full h-full rounded-full object-cover" />
+          </div>
+          <h4 className="text-xl font-black text-slate-800">{user.name}</h4>
+          <div className="flex items-center gap-2 mt-2">
+            <span className={`text-xs font-bold px-3 py-1 rounded-full uppercase tracking-wider ${user.role === UserRole.DEVELOPER ? 'bg-purple-100 text-purple-600' : user.role === UserRole.FOUNDER ? 'bg-blue-100 text-blue-600' : 'bg-slate-800 text-white'}`}>
+              {user.role}
+            </span>
+            <span className={`text-xs font-bold px-3 py-1 rounded-full border ${isOnline(user) ? 'bg-green-50 text-green-600 border-green-200' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
+              {isOnline(user) ? 'ONLINE' : 'OFFLINE'}
+            </span>
+          </div>
+        </div>
+
+        <div className="space-y-4">
+          {user.email && (
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Email</label>
+              <p className="text-sm text-slate-700">{user.email}</p>
+            </div>
+          )}
+
+          {user.bio && (
+            <div>
+              <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Bio</label>
+              <p className="text-sm text-slate-700">{user.bio}</p>
+            </div>
+          )}
+
+          {/* Developer Specific Fields */}
+          {user.role === UserRole.DEVELOPER && (
+            <>
+              {user.skills && (
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Skills</label>
+                  <p className="text-sm text-slate-700">{user.skills}</p>
+                </div>
+              )}
+
+              {user.college && (
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase block mb-1">College</label>
+                  <p className="text-sm text-slate-700">{user.college}</p>
+                </div>
+              )}
+
+              {user.experience && (
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Experience</label>
+                  <p className="text-sm text-slate-700">{user.experience}</p>
+                </div>
+              )}
+
+              {user.githubUrl && (
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase block mb-1">GitHub</label>
+                  <a href={user.githubUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-blue hover:underline flex items-center gap-1">
+                    {user.githubUrl} <ExternalLink size={12} />
+                  </a>
+                </div>
+              )}
+
+              {user.resumeUrl && (
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Resume/CV</label>
+                  <a href={user.resumeUrl} target="_blank" rel="noopener noreferrer" className="text-sm text-brand-blue hover:underline flex items-center gap-1">
+                    View Resume <ExternalLink size={12} />
+                  </a>
+                </div>
+              )}
+            </>
+          )}
+
+          {/* Founder Specific Fields */}
+          {user.role === UserRole.FOUNDER && (
+            <>
+              {user.startupName && (
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Startup Name</label>
+                  <p className="text-sm text-slate-700">{user.startupName}</p>
+                </div>
+              )}
+
+              {user.startupStage && (
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Startup Stage</label>
+                  <p className="text-sm text-slate-700">{user.startupStage}</p>
+                </div>
+              )}
+
+              {user.startupDescription && (
+                <div>
+                  <label className="text-xs font-bold text-slate-400 uppercase block mb-1">Description</label>
+                  <p className="text-sm text-slate-700">{user.startupDescription}</p>
+                </div>
+              )}
+            </>
+          )}
+        </div>
+
+        <button onClick={onClose} className="w-full mt-6 py-3 bg-slate-800 text-white rounded-xl font-bold hover:bg-slate-700 transition-colors">
+          Close
+        </button>
+      </div>
+    </div>
+  );
+};
+
 
 // --- Install Prompt Popup Component ---
 const InstallPromptPopup: React.FC = () => {
@@ -279,7 +413,7 @@ const InstallPromptPopup: React.FC = () => {
 
 // --- Components ---
 
-const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () => void, viewMode?: 'DASHBOARD' | 'MARKET' | 'SHOWCASE', developers?: UserProfile[], onRefreshDevelopers?: () => void, onSubmission?: (type: 'UPDATE' | 'FINAL_PROJECT', postId?: string) => void }> = ({ post, currentUser, onUpdate, viewMode = 'DASHBOARD', developers = [], onRefreshDevelopers, onSubmission }) => {
+const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () => void, viewMode?: 'DASHBOARD' | 'MARKET' | 'SHOWCASE', developers?: UserProfile[], onRefreshDevelopers?: () => void, onSubmission?: (type: 'UPDATE' | 'FINAL_PROJECT', postId?: string) => void, onProfileClick?: (uid: string) => void }> = ({ post, currentUser, onUpdate, viewMode = 'DASHBOARD', developers = [], onRefreshDevelopers, onSubmission, onProfileClick }) => {
   const [isLiked, setIsLiked] = useState(post.likedBy?.includes(currentUser.uid) || false);
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
@@ -550,6 +684,7 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
                 key={uid}
                 uid={uid}
                 showRemove={canManage}
+                onClick={onProfileClick ? () => onProfileClick(uid) : undefined}
                 onRemove={async () => {
                   if (window.confirm('Remove this developer from the team?')) {
                     await db.unassignDeveloper(post.id, uid);
@@ -707,7 +842,7 @@ const UserListItem = ({ uid, isActive, onClick }: { uid: string, isActive: boole
   );
 };
 
-const NetworkingView: React.FC<{ currentUser: UserProfile, onMessage: (userId: string) => void }> = ({ currentUser, onMessage }) => {
+const NetworkingView: React.FC<{ currentUser: UserProfile, onMessage: (userId: string) => void, onProfileClick: (user: UserProfile) => void }> = ({ currentUser, onMessage, onProfileClick }) => {
   const [users, setUsers] = useState<UserProfile[]>([]);
 
   useEffect(() => {
@@ -736,7 +871,7 @@ const NetworkingView: React.FC<{ currentUser: UserProfile, onMessage: (userId: s
           </div>
         )}
         {users.map(user => (
-          <NetworkingUserCard key={user.uid} initialUser={user} onMessage={onMessage} />
+          <NetworkingUserCard key={user.uid} initialUser={user} onMessage={onMessage} onProfileClick={onProfileClick} />
         ))}
       </div>
     </div>
@@ -744,7 +879,7 @@ const NetworkingView: React.FC<{ currentUser: UserProfile, onMessage: (userId: s
 };
 
 // --- Self-Updating Networking Card ---
-const NetworkingUserCard = ({ initialUser, onMessage }: { initialUser: UserProfile, onMessage: (uid: string) => void }) => {
+const NetworkingUserCard = ({ initialUser, onMessage, onProfileClick }: { initialUser: UserProfile, onMessage: (uid: string) => void, onProfileClick: (user: UserProfile) => void }) => {
   const [user, setUser] = useState<UserProfile>(initialUser);
 
   useEffect(() => {
@@ -755,7 +890,10 @@ const NetworkingUserCard = ({ initialUser, onMessage }: { initialUser: UserProfi
   }, [initialUser.uid]);
 
   return (
-    <div className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex gap-4">
+    <div
+      className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex gap-4 cursor-pointer"
+      onClick={() => onProfileClick(user)}
+    >
       <div className="w-16 h-16 rounded-full bg-slate-200 overflow-hidden shrink-0 relative">
         <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
         {(user.status !== 'OFFLINE' && user.lastSeen && (Date.now() - user.lastSeen < 30 * 1000)) && (
@@ -777,7 +915,13 @@ const NetworkingUserCard = ({ initialUser, onMessage }: { initialUser: UserProfi
         <p className="text-xs text-slate-500 mt-2 line-clamp-2">{user.bio || user.email}</p>
 
         <div className="flex gap-2 mt-4">
-          <button onClick={() => onMessage(user.uid)} className="flex-1 py-2 bg-brand-dark text-white text-xs font-bold rounded-lg hover:bg-slate-800 flex items-center justify-center gap-2">
+          <button
+            onClick={(e) => {
+              e.stopPropagation();
+              onMessage(user.uid);
+            }}
+            className="flex-1 py-2 bg-brand-dark text-white text-xs font-bold rounded-lg hover:bg-slate-800 flex items-center justify-center gap-2"
+          >
             <MessageSquare size={14} /> Message
           </button>
         </div>
@@ -928,6 +1072,7 @@ const UserDashboard: React.FC<{ currentUser: UserProfile, onProfileUpdate: (user
   const [editName, setEditName] = useState(currentUser.name);
   const [editBio, setEditBio] = useState(currentUser.bio || '');
   const [editAvatar, setEditAvatar] = useState(currentUser.avatar || '');
+  const [editResumeUrl, setEditResumeUrl] = useState(currentUser.resumeUrl || '');
 
   useEffect(() => {
     const loadPosts = async () => {
@@ -938,7 +1083,7 @@ const UserDashboard: React.FC<{ currentUser: UserProfile, onProfileUpdate: (user
   }, [currentUser]);
 
   const handleSaveProfile = async () => {
-    const updated = await db.updateUser(currentUser.uid, { name: editName, bio: editBio, avatar: editAvatar });
+    const updated = await db.updateUser(currentUser.uid, { name: editName, bio: editBio, avatar: editAvatar, resumeUrl: editResumeUrl });
     if (updated) {
       onProfileUpdate(updated);
       setIsEditing(false);
@@ -1003,6 +1148,13 @@ const UserDashboard: React.FC<{ currentUser: UserProfile, onProfileUpdate: (user
                 <label className="text-xs font-bold text-slate-400 ml-2 mb-1 block uppercase">Bio</label>
                 <textarea value={editBio} onChange={(e) => setEditBio(e.target.value)} rows={3} className="w-full p-3 bg-slate-50 rounded-xl font-medium" placeholder="Bio" />
               </div>
+              {currentUser.role === UserRole.DEVELOPER && (
+                <div>
+                  <label className="text-xs font-bold text-slate-400 ml-2 mb-1 block uppercase">Resume/CV URL</label>
+                  <input value={editResumeUrl} onChange={(e) => setEditResumeUrl(e.target.value)} className="w-full p-3 bg-slate-50 rounded-xl text-sm" placeholder="https://drive.google.com/file/d/..." />
+                  <p className="text-[10px] text-slate-400 mt-1 ml-2">Paste your Google Drive link or any public URL</p>
+                </div>
+              )}
               <button onClick={handleSaveProfile} className="w-full py-3 bg-brand-orange text-white rounded-xl font-bold">Save Changes</button>
               <button onClick={() => setIsEditing(false)} className="w-full py-3 text-slate-400 font-bold">Cancel</button>
             </div>
@@ -1281,6 +1433,14 @@ const App: React.FC = () => {
   // Session Persistence Removed by User Request
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [developers, setDevelopers] = useState<UserProfile[]>([]);
+  const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
+
+  // Clear profile view on logout
+  useEffect(() => {
+    if (!currentUser) {
+      setViewingProfile(null);
+    }
+  }, [currentUser]);
 
   // Load developers list
   const loadDevelopers = async () => {
@@ -1811,12 +1971,22 @@ const App: React.FC = () => {
     }
   };
 
+  const handleLogout = async () => {
+    try {
+      await signOut(auth);
+    } catch (e) {
+      console.error("Logout error:", e);
+    }
+    setCurrentUser(null);
+    setIsSuperAdminMode(false);
+    setViewingProfile(null);
+  };
+
   const handleBackToHome = () => {
     if (currentUser) {
       if (window.confirm("Return to Home Page? You will be logged out.")) {
-        setCurrentUser(null);
+        handleLogout();
         setRegistrationRole(null);
-        setIsSuperAdminMode(false);
       }
     } else {
       setRegistrationRole(null);
@@ -1838,7 +2008,7 @@ const App: React.FC = () => {
                 Your account has been deboarded (blocked) by an administrator. You can no longer access the platform.
               </p>
               <button
-                onClick={() => setCurrentUser(null)}
+                onClick={handleLogout}
                 className="w-full py-4 bg-white text-red-900 rounded-xl font-black hover:bg-neutral-100 transition-colors flex items-center justify-center gap-2"
               >
                 <LogOut size={20} /> Sign Out
@@ -1884,7 +2054,7 @@ const App: React.FC = () => {
               <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden"><img src={currentUser.avatar} className="w-full h-full object-cover" /></div>
               <div><div className="text-sm font-bold text-slate-800">{currentUser.name}</div><div className="text-xs text-slate-400 font-bold">{currentUser.role}</div></div>
             </div>
-            <button onClick={() => setCurrentUser(null)} className="flex items-center gap-2 text-slate-400 hover:text-red-500 font-bold text-sm"><LogOut size={16} /> Logout</button>
+            <button onClick={handleLogout} className="flex items-center gap-2 text-slate-400 hover:text-red-500 font-bold text-sm"><LogOut size={16} /> Logout</button>
           </div>
         </aside>
 
@@ -1895,7 +2065,7 @@ const App: React.FC = () => {
             <div className="font-black text-xl text-slate-800 flex items-center gap-2">
               <img src={SQUADRAN_LOGO_URL} className="w-6 h-6 object-contain" /> BuildForge
             </div>
-            <button onClick={() => setCurrentUser(null)}><LogOut size={20} className="text-slate-400" /></button>
+            <button onClick={handleLogout}><LogOut size={20} className="text-slate-400" /></button>
           </div>
 
           {currentView === ViewType.ADMIN_DASHBOARD ? (
@@ -1909,6 +2079,7 @@ const App: React.FC = () => {
                 setDirectMessageTarget(uid);
                 setCurrentView(ViewType.MESSAGES);
               }}
+              onProfileClick={(user) => setViewingProfile(user)}
             />
           ) : currentView === ViewType.MESSAGES ? (
             <MessagesView currentUser={currentUser} initialChatId={directMessageTarget || undefined} />
@@ -2075,6 +2246,10 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+        {/* Profile Modal */}
+        {viewingProfile && (
+          <ProfileModal initialUser={viewingProfile} onClose={() => setViewingProfile(null)} />
         )}
       </div>
     );
@@ -2480,6 +2655,11 @@ const App: React.FC = () => {
               </div>
             </div>
           </div>
+        )}
+
+        {/* Profile Modal */}
+        {viewingProfile && (
+          <ProfileModal initialUser={viewingProfile} onClose={() => setViewingProfile(null)} />
         )}
       </div>
     </div>

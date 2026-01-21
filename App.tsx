@@ -1091,44 +1091,46 @@ const UserDashboard: React.FC<{ currentUser: UserProfile, onProfileUpdate: (user
   };
 
   return (
-    <div className="max-w-4xl mx-auto animate-fade-in-up">
-      <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 mb-8 relative overflow-hidden">
-        <div className="flex flex-col md:flex-row items-center gap-8 relative z-10">
-          <div className="w-24 h-24 rounded-full bg-slate-100 p-1 border-2 border-brand-orange/20 overflow-hidden">
-            <img src={currentUser.avatar} alt="Profile" className="w-full h-full rounded-full object-cover" />
-          </div>
-          <div className="flex-1 text-center md:text-left">
-            <h2 className="text-3xl font-black text-slate-800">{currentUser.name}</h2>
-            <div className="flex items-center justify-center md:justify-start gap-3 mt-1">
-              <p className="text-brand-orange font-bold uppercase tracking-wide text-sm">
-                {currentUser.role}
-              </p>
-              <div className="flex items-center gap-2 bg-white/50 px-3 py-1 rounded-full border border-slate-200">
-                <span className={`w-2 h-2 rounded-full ${currentUser.status === 'ONLINE' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-slate-400'}`}></span>
-                <span className="text-xs font-bold text-slate-600">{currentUser.status === 'ONLINE' ? 'Online' : 'Offline'}</span>
-              </div>
+    <div className="max-w-4xl mx-auto">
+      <div className="animate-fade-in-up">
+        <div className="bg-white rounded-[2rem] p-8 shadow-sm border border-slate-100 mb-8 relative overflow-hidden">
+          <div className="flex flex-col md:flex-row items-center gap-8 relative z-10">
+            <div className="w-24 h-24 rounded-full bg-slate-100 p-1 border-2 border-brand-orange/20 overflow-hidden">
+              <img src={currentUser.avatar} alt="Profile" className="w-full h-full rounded-full object-cover" />
             </div>
-            {currentUser.bio && <p className="text-slate-500 mt-3 text-sm font-medium">{currentUser.bio}</p>}
+            <div className="flex-1 text-center md:text-left">
+              <h2 className="text-3xl font-black text-slate-800">{currentUser.name}</h2>
+              <div className="flex items-center justify-center md:justify-start gap-3 mt-1">
+                <p className="text-brand-orange font-bold uppercase tracking-wide text-sm">
+                  {currentUser.role}
+                </p>
+                <div className="flex items-center gap-2 bg-white/50 px-3 py-1 rounded-full border border-slate-200">
+                  <span className={`w-2 h-2 rounded-full ${currentUser.status === 'ONLINE' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-slate-400'}`}></span>
+                  <span className="text-xs font-bold text-slate-600">{currentUser.status === 'ONLINE' ? 'Online' : 'Offline'}</span>
+                </div>
+              </div>
+              {currentUser.bio && <p className="text-slate-500 mt-3 text-sm font-medium">{currentUser.bio}</p>}
+            </div>
+            <button onClick={() => setIsEditing(true)} className="py-2 px-6 bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center gap-2">
+              <Edit2 size={14} /> Edit Profile
+            </button>
           </div>
-          <button onClick={() => setIsEditing(true)} className="py-2 px-6 bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center gap-2">
-            <Edit2 size={14} /> Edit Profile
-          </button>
         </div>
-      </div>
 
-      <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2">
-        <LayoutDashboard size={24} className="text-brand-blue" /> My Activity
-      </h3>
+        <h3 className="text-xl font-black text-slate-800 mb-6 flex items-center gap-2">
+          <LayoutDashboard size={24} className="text-brand-blue" /> My Activity
+        </h3>
 
-      <div className="grid gap-6">
-        {myPosts.map(post => (
-          <div key={post.id} className="relative opacity-90 hover:opacity-100 transition-opacity">
-            <PostCard post={post} currentUser={currentUser} onUpdate={async () => {
-              const posts = await db.getUserPosts(currentUser.uid);
-              setMyPosts(posts);
-            }} />
-          </div>
-        ))}
+        <div className="grid gap-6">
+          {myPosts.map(post => (
+            <div key={post.id} className="relative opacity-90 hover:opacity-100 transition-opacity">
+              <PostCard post={post} currentUser={currentUser} onUpdate={async () => {
+                const posts = await db.getUserPosts(currentUser.uid);
+                setMyPosts(posts);
+              }} />
+            </div>
+          ))}
+        </div>
       </div>
 
       {isEditing && (
@@ -1434,6 +1436,8 @@ const App: React.FC = () => {
   const [currentUser, setCurrentUser] = useState<UserProfile | null>(null);
   const [developers, setDevelopers] = useState<UserProfile[]>([]);
   const [viewingProfile, setViewingProfile] = useState<UserProfile | null>(null);
+  const [googleDeveloperResume, setGoogleDeveloperResume] = useState('');
+  const [isCapturingGoogleResume, setIsCapturingGoogleResume] = useState(false);
 
   // Clear profile view on logout
   useEffect(() => {
@@ -2304,14 +2308,7 @@ const App: React.FC = () => {
 
               <button
                 onClick={async () => {
-                  const result = await db.completeGoogleSignup(pendingGoogleUser, UserRole.DEVELOPER);
-                  if (result.user) {
-                    setCurrentUser(result.user);
-                    setPendingGoogleUser(null);
-                    setCurrentView(ViewType.DEV_MARKET);
-                  } else {
-                    alert("Account creation failed: " + result.error);
-                  }
+                  setIsCapturingGoogleResume(true);
                 }}
                 className="w-full p-4 rounded-2xl border-2 border-slate-100 hover:border-brand-orange hover:bg-orange-50/50 transition-all flex items-center gap-4 text-left group"
               >
@@ -2321,11 +2318,48 @@ const App: React.FC = () => {
                   <p className="text-slate-500 text-xs font-bold uppercase tracking-wider">I want to build projects</p>
                 </div>
               </button>
+
+              {/* Conditional Resume Input for Google Developer */}
+              {isCapturingGoogleResume && (
+                <div className="mt-4 p-6 bg-slate-50 rounded-2xl border-2 border-brand-orange/20 animate-fade-in-up">
+                  <label className="text-xs font-bold text-slate-500 uppercase block mb-2">Compulsory Resume / CV URL</label>
+                  <input
+                    type="url"
+                    required
+                    value={googleDeveloperResume}
+                    onChange={(e) => setGoogleDeveloperResume(e.target.value)}
+                    placeholder="https://drive.google.com/..."
+                    className="w-full p-4 bg-white rounded-xl font-bold outline-none border-2 border-brand-orange focus:ring-4 focus:ring-brand-orange/10 mb-4"
+                  />
+                  <button
+                    onClick={async () => {
+                      if (!googleDeveloperResume.trim()) {
+                        alert("Resume URL is compulsory for developers!");
+                        return;
+                      }
+                      const result = await db.completeGoogleSignup(pendingGoogleUser!!, UserRole.DEVELOPER, googleDeveloperResume);
+                      if (result.user) {
+                        setCurrentUser(result.user);
+                        setPendingGoogleUser(null);
+                        setIsCapturingGoogleResume(false);
+                        setCurrentView(ViewType.DEV_MARKET);
+                      } else {
+                        alert("Account creation failed: " + result.error);
+                      }
+                    }}
+                    className="w-full py-4 bg-brand-orange text-white rounded-xl font-black shadow-lg hover:opacity-90 transition-all flex items-center justify-center gap-2"
+                  >
+                    Finish Registration <ArrowRight size={20} />
+                  </button>
+                </div>
+              )}
             </div>
 
             <button
               onClick={async () => {
                 setPendingGoogleUser(null);
+                setIsCapturingGoogleResume(false);
+                setGoogleDeveloperResume('');
                 await signOut(auth);
               }}
               className="w-full py-4 text-slate-400 font-bold hover:text-red-500 text-sm mt-2 transition-colors"
@@ -2477,7 +2511,10 @@ const App: React.FC = () => {
                       <input placeholder="Full Name" className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none text-sm" onChange={e => updateForm('name', e.target.value)} />
                       <input placeholder="Email" type="email" className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none text-sm" onChange={e => updateForm('email', e.target.value)} />
                       <input placeholder="Password (min 6 characters)" type="password" className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none text-sm" onChange={e => updateForm('password', e.target.value)} />
-                      <input placeholder="Key Skills (React, Python...)" className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none text-sm" onChange={e => updateForm('skills', e.target.value)} />
+                      <div className="space-y-1">
+                        <label className="text-[10px] font-bold text-slate-400 uppercase ml-2">Resume / CV URL (Compulsory)</label>
+                        <input name="resumeUrl" required type="url" placeholder="https://drive.google.com/..." className="w-full p-3 bg-slate-50 rounded-xl font-bold outline-none text-sm" onChange={e => updateForm('resumeUrl', e.target.value)} />
+                      </div>
                       <button onClick={handleSubmitAuth} className="w-full py-3 bg-brand-orange text-white rounded-xl font-bold shadow-lg hover:bg-orange-600 mt-2">Submit</button>
                     </div>
                   )}

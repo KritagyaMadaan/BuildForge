@@ -11,7 +11,8 @@ import {
     orderBy,
     addDoc,
     serverTimestamp,
-    Timestamp
+    Timestamp,
+    onSnapshot
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { UserProfile, Post, Comment, Message, UserRole } from '../types';
@@ -22,6 +23,16 @@ export const dbService = {
     async getUser(uid: string): Promise<UserProfile | null> {
         const userDoc = await getDoc(doc(db, 'users', uid));
         return userDoc.exists() ? { uid: userDoc.id, ...userDoc.data() } as UserProfile : null;
+    },
+
+    subscribeToUser(uid: string, callback: (user: UserProfile | null) => void) {
+        return onSnapshot(doc(db, 'users', uid), (doc) => {
+            if (doc.exists()) {
+                callback({ uid: doc.id, ...doc.data() } as UserProfile);
+            } else {
+                callback(null);
+            }
+        });
     },
 
     async getUserByEmail(email: string): Promise<UserProfile | null> {
@@ -82,6 +93,25 @@ export const dbService = {
         return docRef.id;
     },
 
+    async createUpdate(postData: Omit<Post, 'id' | 'timestamp' | 'likes' | 'comments'>) {
+        const updatesRef = collection(db, 'updates');
+        // Updates don't need likes/comments as per request, but we keep structure consistent for type safety
+        const newUpdate = {
+            ...postData,
+            timestamp: serverTimestamp(),
+            // Even if UI hides them, we initialize them to avoid undefined errors if accidentally accessed
+            likes: 0,
+            likedBy: [],
+            comments: [],
+            status: 'VERIFIED', // Updates are auto-verified? Usually yes.
+            applicants: [],
+            team: []
+        };
+
+        const docRef = await addDoc(updatesRef, newUpdate);
+        return docRef.id;
+    },
+
     async getPosts(type?: string, status?: string): Promise<Post[]> {
         // Fetch ALL posts and filter in memory to avoid Firestore index issues
         const q = query(collection(db, 'posts'));
@@ -104,7 +134,18 @@ export const dbService = {
         return posts.sort((a, b) => b.timestamp - a.timestamp);
     },
 
+    async getUpdates(): Promise<Post[]> {
+        const q = query(collection(db, 'updates'), orderBy('timestamp', 'desc'));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            timestamp: (doc.data().timestamp as Timestamp)?.toMillis() || Date.now()
+        } as Post));
+    },
+
     async getPost(postId: string): Promise<Post | null> {
+        // Try 'posts' first
         const postDoc = await getDoc(doc(db, 'posts', postId));
         if (postDoc.exists()) {
             return {
@@ -113,15 +154,35 @@ export const dbService = {
                 timestamp: (postDoc.data().timestamp as Timestamp)?.toMillis() || Date.now()
             } as Post;
         }
+
+        // Try 'updates' fallback
+        const updateDocRef = await getDoc(doc(db, 'updates', postId));
+        if (updateDocRef.exists()) {
+            return {
+                id: updateDocRef.id,
+                ...updateDocRef.data(),
+                timestamp: (updateDocRef.data().timestamp as Timestamp)?.toMillis() || Date.now()
+            } as Post;
+        }
+
         return null;
     },
 
     async updatePost(postId: string, data: Partial<Post>) {
-        await updateDoc(doc(db, 'posts', postId), data);
+        try {
+            await updateDoc(doc(db, 'posts', postId), data);
+        } catch (e) {
+            // If failed (likely not found in posts), try updates
+            await updateDoc(doc(db, 'updates', postId), data);
+        }
     },
 
     async deletePost(postId: string) {
-        await deleteDoc(doc(db, 'posts', postId));
+        try {
+            await deleteDoc(doc(db, 'posts', postId));
+        } catch (e) {
+            await deleteDoc(doc(db, 'updates', postId));
+        }
     },
 
     async verifyPost(postId: string) {
@@ -136,7 +197,9 @@ export const dbService = {
             ? post.techStack
             : ['React', 'Node.js', 'Firebase']; // Fallback if no tech stack provided
 
-        await updateDoc(doc(db, 'posts', postId), {
+        const collectionName = (await getDoc(doc(db, 'posts', postId))).exists() ? 'posts' : 'updates';
+
+        await updateDoc(doc(db, collectionName, postId), {
             status: 'VERIFIED',
             mvp: {
                 description: `MVP for ${post.title || 'this project'}`,
@@ -151,12 +214,21 @@ export const dbService = {
     },
 
     async rejectPost(postId: string) {
-        await deleteDoc(doc(db, 'posts', postId));
+        try {
+            await deleteDoc(doc(db, 'posts', postId));
+        } catch (e) {
+            await deleteDoc(doc(db, 'updates', postId));
+        }
     },
 
     async addComment(postId: string, comment: Comment) {
-        const postRef = doc(db, 'posts', postId);
-        const postDoc = await getDoc(postRef);
+        let postRef = doc(db, 'posts', postId);
+        let postDoc = await getDoc(postRef);
+
+        if (!postDoc.exists()) {
+            postRef = doc(db, 'updates', postId);
+            postDoc = await getDoc(postRef);
+        }
 
         if (postDoc.exists()) {
             const comments = postDoc.data().comments || [];
@@ -166,8 +238,13 @@ export const dbService = {
     },
 
     async toggleLike(postId: string, userId: string) {
-        const postRef = doc(db, 'posts', postId);
-        const postDoc = await getDoc(postRef);
+        let postRef = doc(db, 'posts', postId);
+        let postDoc = await getDoc(postRef);
+
+        if (!postDoc.exists()) {
+            postRef = doc(db, 'updates', postId);
+            postDoc = await getDoc(postRef);
+        }
 
         if (postDoc.exists()) {
             const data = postDoc.data();

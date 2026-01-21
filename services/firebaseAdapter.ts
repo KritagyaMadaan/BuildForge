@@ -207,56 +207,44 @@ export const db = {
     },
 
     getConnectedUsers: async (currentUser: UserProfile): Promise<UserProfile[]> => {
-        const allUsers = await dbService.getAllUsers();
-
         // RESTRICTION: Founders and Developers can ONLY see Leads, Super Admins, AND their Team Members
         if (currentUser.role === UserRole.FOUNDER || currentUser.role === UserRole.DEVELOPER) {
-            // 1. Always include Leads and Super Admins
-            const baseConnections = allUsers.filter(u =>
-                u.uid !== currentUser.uid &&
-                (u.role === UserRole.LEAD || u.role === UserRole.SUPER_ADMIN)
-            );
+            // 1. Always include Leads and Super Admins (Targeted query)
+            const baseConnections = await dbService.getUsersByRoles([UserRole.LEAD, UserRole.SUPER_ADMIN]);
+            const filteredBase = baseConnections.filter(u => u.uid !== currentUser.uid);
 
-            // 2. Find "Active" Projects (Verified Ideas)
-            // Only active ideas allow communication. Delivered projects (Final Project) sever the link.
-            const activeProjects = await dbService.getPosts('IDEA_SUBMISSION', 'VERIFIED');
+            // 2. Find Projects where I am involved (Author or Team Member)
+            const myProjects = await dbService.getPostsByParticipant(currentUser.uid);
 
-            // We do NOT fetch 'DELIVERY' posts here, purposefully restricting communication.
-            const allRelevantProjects = [...activeProjects];
+            // 3. Filter for "Active" Projects (Verified Ideas)
+            const activeProjects = myProjects.filter(p => p.type === 'IDEA_SUBMISSION' && p.status === 'VERIFIED');
 
             const teamMateIds = new Set<string>();
 
-            // 3. Check each project for relationship
-            allRelevantProjects.forEach(post => {
+            // 4. Extract IDs from projects
+            activeProjects.forEach(post => {
                 const team = post.team || [];
                 const authorId = post.authorId;
 
-                // Am I the Founder?
-                const isMyProject = authorId === currentUser.uid;
-
-                // Am I on the Team?
-                const isOnTeam = team.includes(currentUser.uid);
-
-                if (isMyProject || isOnTeam) {
-                    // Add everyone involved to my connections
-                    if (authorId !== currentUser.uid) teamMateIds.add(authorId); // Add Founder
-                    team.forEach(uid => {
-                        if (uid !== currentUser.uid) teamMateIds.add(uid); // Add Team Members
-                    });
-                }
+                if (authorId !== currentUser.uid) teamMateIds.add(authorId);
+                team.forEach(uid => {
+                    if (uid !== currentUser.uid) teamMateIds.add(uid);
+                });
             });
 
-            // 4. Map IDs to User Profiles
-            const teamConnections = allUsers.filter(u => teamMateIds.has(u.uid));
+            // 5. Fetch Team Member profiles in batch
+            const teamConnections = await dbService.getUsersByBatch(Array.from(teamMateIds));
 
-            // 5. Combine and Deduplicate
+            // 6. Combine and Deduplicate
             const uniqueConnections = new Map<string, UserProfile>();
-            [...baseConnections, ...teamConnections].forEach(u => uniqueConnections.set(u.uid, u));
+            [...filteredBase, ...teamConnections].forEach(u => uniqueConnections.set(u.uid, u));
 
             return Array.from(uniqueConnections.values());
         }
 
-        // Leads and Super Admins can see everyone
+        // Leads and Super Admins currently see everyone. 
+        // We fetch all users, but even this could be optimized later if needed.
+        const allUsers = await dbService.getAllUsers();
         return allUsers.filter(u => u.uid !== currentUser.uid);
     },
 

@@ -12,7 +12,8 @@ import {
     addDoc,
     serverTimestamp,
     Timestamp,
-    onSnapshot
+    onSnapshot,
+    or
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { UserProfile, Post, Comment, Message, UserRole } from '../types';
@@ -74,6 +75,29 @@ export const dbService = {
         }
     },
 
+    async getUsersByRoles(roles: UserRole[]): Promise<UserProfile[]> {
+        const q = query(collection(db, 'users'), where('role', 'in', roles));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
+    },
+
+    async getUsersByBatch(uids: string[]): Promise<UserProfile[]> {
+        if (uids.length === 0) return [];
+        // Firestore 'in' query is limited to 30 items
+        const batches = [];
+        for (let i = 0; i < uids.length; i += 30) {
+            batches.push(uids.slice(i, i + 30));
+        }
+
+        const results: UserProfile[] = [];
+        for (const batch of batches) {
+            const q = query(collection(db, 'users'), where('uid', 'in', batch));
+            const snapshot = await getDocs(q);
+            snapshot.docs.forEach(doc => results.push({ uid: doc.id, ...doc.data() } as UserProfile));
+        }
+        return results;
+    },
+
     // ===== POST OPERATIONS =====
 
     async createPost(postData: Omit<Post, 'id' | 'timestamp' | 'likes' | 'comments'>) {
@@ -132,6 +156,23 @@ export const dbService = {
 
         // Sort in memory
         return posts.sort((a, b) => b.timestamp - a.timestamp);
+    },
+
+    async getPostsByParticipant(uid: string): Promise<Post[]> {
+        // Fetch posts where user is author OR user is in team
+        const q = query(
+            collection(db, 'posts'),
+            or(
+                where('authorId', '==', uid),
+                where('team', 'array-contains', uid)
+            )
+        );
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({
+            id: doc.id,
+            ...doc.data(),
+            timestamp: (doc.data().timestamp && typeof (doc.data().timestamp as any).toMillis === 'function') ? (doc.data().timestamp as Timestamp).toMillis() : Date.now()
+        } as Post));
     },
 
     async getUpdates(): Promise<Post[]> {

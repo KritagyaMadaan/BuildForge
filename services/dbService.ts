@@ -56,17 +56,16 @@ export const dbService = {
     },
 
     async getDevelopers(): Promise<UserProfile[]> {
-        console.log("[dbService] Fetching all users to find developers...");
+        console.log("[dbService] Fetching developers using query...");
         try {
-            // Fetch ALL users first to avoid potential missing index issues with composite queries
-            const snapshot = await getDocs(collection(db, 'users'));
-            const allUsers = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
-
-            console.log("[dbService] Total users in DB:", allUsers.length);
-            // Log roles to see what's actually there
-            allUsers.forEach(u => console.log(`- User: ${u.name} | Role: ${u.role} | Blocked: ${u.blocked}`));
-
-            const devs = allUsers.filter(u => u.role === UserRole.DEVELOPER && !u.blocked);
+            // Use query with where clauses to limit reads
+            const q = query(
+                collection(db, 'users'),
+                where('role', '==', UserRole.DEVELOPER),
+                where('blocked', '==', false)
+            );
+            const snapshot = await getDocs(q);
+            const devs = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
             console.log("[dbService] Found Developers:", devs.length);
             return devs;
         } catch (error) {
@@ -137,24 +136,25 @@ export const dbService = {
     },
 
     async getPosts(type?: string, status?: string): Promise<Post[]> {
-        // Fetch ALL posts and filter in memory to avoid Firestore index issues
-        const q = query(collection(db, 'posts'));
-        const snapshot = await getDocs(q);
+        // Use targeted query to minimize Firestore reads
+        let q = query(collection(db, 'posts'));
 
-        let posts = snapshot.docs.map(doc => ({
+        const constraints = [];
+        if (type) constraints.push(where('type', '==', type));
+        if (status) constraints.push(where('status', '==', status));
+
+        if (constraints.length > 0) {
+            q = query(collection(db, 'posts'), ...constraints);
+        }
+
+        const snapshot = await getDocs(q);
+        const posts = snapshot.docs.map(doc => ({
             id: doc.id,
             ...doc.data(),
             timestamp: (doc.data().timestamp && typeof (doc.data().timestamp as any).toMillis === 'function') ? (doc.data().timestamp as Timestamp).toMillis() : Date.now()
         } as Post));
 
-        if (type) {
-            posts = posts.filter(p => p.type === type);
-        }
-        if (status) {
-            posts = posts.filter(p => p.status === status);
-        }
-
-        // Sort in memory
+        // Sort in memory (or add orderBy to query if index exists)
         return posts.sort((a, b) => b.timestamp - a.timestamp);
     },
 
@@ -316,6 +316,7 @@ export const dbService = {
         const messagesRef = collection(db, 'messages');
         await addDoc(messagesRef, {
             ...message,
+            participants: [message.senderId, message.receiverId],
             timestamp: serverTimestamp(),
             read: false
         });
@@ -324,25 +325,47 @@ export const dbService = {
     async getMessages(userId1: string, userId2: string): Promise<Message[]> {
         const q = query(
             collection(db, 'messages'),
+            where('participants', 'array-contains', userId1),
             orderBy('timestamp', 'asc')
         );
 
         const snapshot = await getDocs(q);
-        const messages = snapshot.docs
+        return snapshot.docs
             .map(doc => ({
                 id: doc.id,
                 ...doc.data(),
                 timestamp: (doc.data().timestamp as Timestamp)?.toMillis() || Date.now()
             } as Message))
             .filter(m => {
-                if (!userId2) {
-                    return m.senderId === userId1 || m.receiverId === userId1;
-                }
+                if (!userId2) return true;
                 return (m.senderId === userId1 && m.receiverId === userId2) ||
                     (m.senderId === userId2 && m.receiverId === userId1);
             });
+    },
 
-        return messages;
+    subscribeToMessages(userId1: string, userId2: string, callback: (messages: Message[]) => void) {
+        if (!userId2) return () => { };
+
+        const q = query(
+            collection(db, 'messages'),
+            where('participants', 'array-contains', userId1),
+            orderBy('timestamp', 'asc')
+        );
+
+        return onSnapshot(q, (snapshot) => {
+            const messages = snapshot.docs
+                .map(doc => ({
+                    id: doc.id,
+                    ...doc.data(),
+                    timestamp: (doc.data().timestamp as Timestamp)?.toMillis() || Date.now()
+                } as Message))
+                .filter(m => {
+                    if (!userId2) return true;
+                    return (m.senderId === userId1 && m.receiverId === userId2) ||
+                        (m.senderId === userId2 && m.receiverId === userId1);
+                });
+            callback(messages);
+        });
     }
 };
 

@@ -161,8 +161,8 @@ export const db = {
         return { user: null, error: result.error };
     },
 
-    completeGoogleSignup: async (firebaseUser: User, role: UserRole): Promise<{ user: UserProfile | null, error?: string }> => {
-        const result = await authService.createGoogleUser(firebaseUser, role);
+    completeGoogleSignup: async (firebaseUser: User, role: UserRole, resumeUrl?: string): Promise<{ user: UserProfile | null, error?: string }> => {
+        const result = await authService.createGoogleUser(firebaseUser, role, resumeUrl);
         if (result.success && result.user) {
             return { user: result.user };
         }

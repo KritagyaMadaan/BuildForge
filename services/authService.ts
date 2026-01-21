@@ -95,7 +95,7 @@ export const authService = {
     },
 
     // Complete Google Sign Up with detected role
-    async createGoogleUser(firebaseUser: User, role: UserRole) {
+    async createGoogleUser(firebaseUser: User, role: UserRole, resumeUrl?: string) {
         try {
             const userProfile: UserProfile = {
                 uid: firebaseUser.uid,
@@ -103,7 +103,8 @@ export const authService = {
                 name: firebaseUser.displayName || 'User',
                 role: role,
                 avatar: firebaseUser.photoURL || `https://ui-avatars.com/api/?name=${encodeURIComponent(firebaseUser.displayName || 'User')}`,
-                blocked: false
+                blocked: false,
+                resumeUrl: resumeUrl
             };
 
             await setDoc(doc(db, 'users', firebaseUser.uid), userProfile);

@@ -68,6 +68,63 @@ const CursorBloop = () => {
   );
 };
 
+// --- Helper Checks ---
+const isOnline = (u: UserProfile) => {
+  if (u.status === 'OFFLINE') return false;
+  if (!u.lastSeen) return false;
+  return (Date.now() - u.lastSeen) < 30 * 1000;
+};
+
+// --- User Avatar Component (Universal) ---
+const UserAvatar = ({ uid, size = "md", showName = false }: { uid: string, size?: "sm" | "md" | "lg", showName?: boolean }) => {
+  const [user, setUser] = useState<UserProfile | null>(null);
+
+  useEffect(() => {
+    const fetchUser = async () => {
+      const u = await db.getUserById(uid);
+      setUser(u || null);
+    };
+    fetchUser();
+  }, [uid]);
+
+  if (!user) return <div className="w-10 h-10 bg-slate-200 rounded-full animate-pulse" />;
+
+  const sizeClasses = {
+    sm: "w-8 h-8",
+    md: "w-10 h-10",
+    lg: "w-16 h-16"
+  };
+
+  const dotSizes = {
+    sm: "w-2 h-2",
+    md: "w-2.5 h-2.5",
+    lg: "w-3 h-3"
+  };
+
+  return (
+    <div className="flex items-center gap-3">
+      <div className={`${sizeClasses[size]} rounded-full bg-slate-200 overflow-hidden relative shrink-0`}>
+        {user.avatar ? (
+          <img src={user.avatar} className="w-full h-full object-cover" alt={user.name} />
+        ) : (
+          <div className="w-full h-full flex items-center justify-center bg-brand-orange text-white font-bold">
+            {user.name.charAt(0)}
+          </div>
+        )}
+        {isOnline(user) && (
+          <div className={`absolute bottom-0 right-0 ${dotSizes[size]} bg-green-500 rounded-full border-2 border-white`}></div>
+        )}
+      </div>
+      {showName && (
+        <div>
+          <div className="font-bold text-slate-800 text-sm">{user.name}</div>
+          <div className="text-xs text-slate-400 font-medium">{user.role}</div>
+        </div>
+      )}
+    </div>
+  );
+};
+
 // --- User Badge Component ---
 const UserBadge = ({ uid, onRemove, showRemove = false }: { uid: string, onRemove?: () => void, showRemove?: boolean }) => {
   const [user, setUser] = useState<UserProfile | null>(null);
@@ -83,15 +140,18 @@ const UserBadge = ({ uid, onRemove, showRemove = false }: { uid: string, onRemov
   if (!user) return null;
 
   return (
-    <div className="flex items-center gap-2 px-2 py-1 bg-brand-orange/10 text-brand-orange rounded-full text-xs font-bold border border-brand-orange/20">
-      <div className="w-4 h-4 rounded-full bg-brand-orange overflow-hidden">
-        {user.avatar ? (
-          <img src={user.avatar} className="w-full h-full object-cover" alt={user.name} />
-        ) : (
-          <div className="w-full h-full flex items-center justify-center bg-brand-orange text-white text-[8px]">
-            {user.name.charAt(0)}
-          </div>
-        )}
+    <div className={`flex items-center gap-2 px-2 py-1 rounded-full text-xs font-bold border ${isOnline(user) ? 'bg-green-50 text-green-700 border-green-200' : 'bg-brand-orange/10 text-brand-orange border-brand-orange/20'}`}>
+      <div className="relativePath">
+        <div className="w-4 h-4 rounded-full bg-brand-orange overflow-hidden relative">
+          {user.avatar ? (
+            <img src={user.avatar} className="w-full h-full object-cover" alt={user.name} />
+          ) : (
+            <div className="w-full h-full flex items-center justify-center bg-brand-orange text-white text-[8px]">
+              {user.name.charAt(0)}
+            </div>
+          )}
+          {isOnline(user) && <div className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 bg-green-500 rounded-full border border-white"></div>}
+        </div>
       </div>
       <span>{user.name}</span>
       {showRemove && onRemove && (
@@ -401,19 +461,7 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
   return (
     <div className="bg-white p-6 rounded-[1.5rem] shadow-sm border border-slate-100 hover:shadow-md transition-all mb-6 group relative">
       <div className="flex justify-between items-start mb-4">
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full bg-gradient-to-br from-brand-blue to-brand-orange flex items-center justify-center overflow-hidden shadow-sm">
-            <div className="font-bold text-white">{post.authorName[0]}</div>
-          </div>
-          <div>
-            <h3 className="font-bold text-slate-800 text-sm">{post.authorName}</h3>
-            <div className="text-xs text-slate-400 font-medium">
-              {post.authorRole === UserRole.LEAD ? 'Platform Lead' :
-                post.authorRole === UserRole.SUPER_ADMIN ? 'Super Admin' :
-                  post.authorRole === UserRole.DEVELOPER ? 'Developer' : 'Founder'} • {new Date(post.timestamp).toLocaleDateString()}
-            </div>
-          </div>
-        </div>
+        <UserAvatar uid={post.authorId} showName={true} />
         <div className="flex gap-2">
           {getStatusBadge()}
         </div>
@@ -642,13 +690,16 @@ const UserListItem = ({ uid, isActive, onClick }: { uid: string, isActive: boole
       onClick={onClick}
       className={`p-4 flex items-center gap-3 cursor-pointer hover:bg-white transition-colors ${isActive ? 'bg-white border-l-4 border-brand-orange shadow-sm' : ''}`}
     >
-      <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden">
+      <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden relative">
         {user.avatar ? (
           <img src={user.avatar} alt="" className="w-full h-full object-cover" />
         ) : (
           <div className="w-full h-full flex items-center justify-center bg-slate-300 text-slate-600 font-bold">
             {user.name.charAt(0)}
           </div>
+        )}
+        {(user.status !== 'OFFLINE' && user.lastSeen && (Date.now() - user.lastSeen < 30 * 1000)) && (
+          <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white"></div>
         )}
       </div>
       <div>
@@ -689,8 +740,11 @@ const NetworkingView: React.FC<{ currentUser: UserProfile, onMessage: (userId: s
         )}
         {users.map(user => (
           <div key={user.uid} className="bg-white p-6 rounded-2xl border border-slate-100 shadow-sm hover:shadow-md transition-all flex gap-4">
-            <div className="w-16 h-16 rounded-full bg-slate-200 overflow-hidden shrink-0">
+            <div className="w-16 h-16 rounded-full bg-slate-200 overflow-hidden shrink-0 relative">
               <img src={user.avatar} alt={user.name} className="w-full h-full object-cover" />
+              {(user.status !== 'OFFLINE' && user.lastSeen && (Date.now() - user.lastSeen < 30 * 1000)) && (
+                <div className="absolute bottom-1 right-1 w-3 h-3 bg-green-500 rounded-full border-2 border-white shadow-sm"></div>
+              )}
             </div>
             <div className="flex-1">
               <div className="flex justify-between items-start">
@@ -698,6 +752,9 @@ const NetworkingView: React.FC<{ currentUser: UserProfile, onMessage: (userId: s
                   <h3 className="font-bold text-slate-800">{user.name}</h3>
                   <span className={`text-[10px] font-bold px-2 py-1 rounded-full uppercase tracking-wider ${user.role === UserRole.DEVELOPER ? 'bg-purple-100 text-purple-600' : user.role === UserRole.LEAD ? 'bg-slate-800 text-white' : 'bg-blue-100 text-blue-600'}`}>
                     {user.role}
+                  </span>
+                  <span className={`ml-2 text-[10px] font-bold px-2 py-1 rounded-full border border-slate-200 ${isOnline(user) ? 'bg-green-50 text-green-600 border-green-200' : 'bg-slate-100/50 text-slate-400'}`}>
+                    {isOnline(user) ? 'ONLINE' : 'OFFLINE'}
                   </span>
                 </div>
               </div>
@@ -808,10 +865,18 @@ const MessagesView: React.FC<{ currentUser: UserProfile, initialChatId?: string 
         {activeUser ? (
           <>
             <div className="p-4 border-b border-slate-100 flex items-center gap-3 shadow-sm z-10">
-              <div className="w-8 h-8 rounded-full bg-slate-200 overflow-hidden">
+              <div className="w-10 h-10 rounded-full bg-slate-200 overflow-hidden relative">
                 <img src={activeUser.avatar || ''} alt="" className="w-full h-full object-cover" />
+                {isOnline(activeUser) && (
+                  <div className="absolute bottom-0 right-0 w-2.5 h-2.5 bg-green-500 rounded-full border-2 border-white"></div>
+                )}
               </div>
-              <div className="font-bold text-slate-800">{activeUser.name}</div>
+              <div>
+                <div className="font-bold text-slate-800">{activeUser.name}</div>
+                <div className={`text-xs font-bold ${isOnline(activeUser) ? 'text-green-600' : 'text-slate-400'}`}>
+                  {isOnline(activeUser) ? 'Online' : 'Offline'}
+                </div>
+              </div>
             </div>
             <div className="flex-1 overflow-y-auto p-6 space-y-3 bg-slate-50/50">
               {messages.length === 0 && <div className="text-center text-slate-400 text-sm mt-10">Say hi to {activeUser.name}!</div>}
@@ -878,9 +943,15 @@ const UserDashboard: React.FC<{ currentUser: UserProfile, onProfileUpdate: (user
           </div>
           <div className="flex-1 text-center md:text-left">
             <h2 className="text-3xl font-black text-slate-800">{currentUser.name}</h2>
-            <p className="text-brand-orange font-bold uppercase tracking-wide text-sm">
-              {currentUser.role}
-            </p>
+            <div className="flex items-center justify-center md:justify-start gap-3 mt-1">
+              <p className="text-brand-orange font-bold uppercase tracking-wide text-sm">
+                {currentUser.role}
+              </p>
+              <div className="flex items-center gap-2 bg-white/50 px-3 py-1 rounded-full border border-slate-200">
+                <span className={`w-2 h-2 rounded-full ${currentUser.status === 'ONLINE' ? 'bg-green-500 shadow-[0_0_8px_rgba(34,197,94,0.6)]' : 'bg-slate-400'}`}></span>
+                <span className="text-xs font-bold text-slate-600">{currentUser.status === 'ONLINE' ? 'Online' : 'Offline'}</span>
+              </div>
+            </div>
             {currentUser.bio && <p className="text-slate-500 mt-3 text-sm font-medium">{currentUser.bio}</p>}
           </div>
           <button onClick={() => setIsEditing(true)} className="py-2 px-6 bg-slate-800 text-white rounded-xl font-bold text-xs flex items-center gap-2">
@@ -1137,10 +1208,13 @@ const AdminDashboard: React.FC<{ currentUser: UserProfile }> = ({ currentUser })
             <tbody>
               {allUsers.map(user => (
                 <tr key={user.uid} className="border-b border-slate-50">
-                  <td className="p-4 font-bold text-slate-800 flex items-center gap-3">
-                    <img src={user.avatar} className="w-8 h-8 rounded-full" /> {user.name} <span className="text-slate-400 font-normal">({user.role})</span>
+                  <td className="p-4 font-bold text-slate-800">
+                    <UserAvatar uid={user.uid} size="sm" showName={true} />
                   </td>
-                  <td className="p-4 text-right flex gap-2 justify-end">
+                  <td className="p-4 text-right flex gap-2 justify-end items-center">
+                    <span className={`text-[10px] font-bold px-2 py-1 rounded-full border mr-2 ${isOnline(user) ? 'bg-green-50 text-green-600 border-green-200' : 'bg-slate-100 text-slate-400 border-slate-200'}`}>
+                      {isOnline(user) ? 'ONLINE' : 'OFFLINE'}
+                    </span>
                     <button onClick={() => handleToggleBlock(user.uid)} className={`px-3 py-1 rounded-lg text-xs font-bold border ${user.blocked ? 'bg-red-50 border-red-200 text-red-600' : 'bg-emerald-50 border-emerald-200 text-emerald-600'}`}>
                       {user.blocked ? 'DEBOARDED (BANNED)' : 'BOARDED (ACTIVE)'}
                     </button>
@@ -1201,9 +1275,31 @@ const App: React.FC = () => {
     });
 
     loadDevelopers();
-
     return () => unsubscribe();
   }, []);
+
+  // --- HEARTBEAT EFFECT ---
+  useEffect(() => {
+    if (!currentUser) return;
+
+    const updateHeartbeat = async () => {
+      // Update lastSeen every minute
+      await db.updateUser(currentUser.uid, {
+        lastSeen: Date.now(),
+        // We ensure status is ONLINE if we are active, unless explicitly hidden (future proofing)
+        // For now, we just update lastSeen. The UI decides if "ONLINE" based on recency.
+        status: 'ONLINE'
+      });
+    };
+
+    // Initial call
+    updateHeartbeat();
+
+    // Interval
+    const interval = setInterval(updateHeartbeat, 10 * 1000); // 10 seconds
+    return () => clearInterval(interval);
+  }, [currentUser?.uid]); // Only restart if user changes
+
   const [currentView, setCurrentView] = useState<ViewType>(ViewType.SPRINT_HUB);
   const [showCreateModal, setShowCreateModal] = useState(false);
   const [activeFeature, setActiveFeature] = useState<Feature | null>(null);

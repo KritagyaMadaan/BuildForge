@@ -77,16 +77,7 @@ const isOnline = (u: UserProfile) => {
 
 // --- User Avatar Component (Universal) ---
 const UserAvatar = ({ uid, size = "md", showName = false }: { uid: string, size?: "sm" | "md" | "lg", showName?: boolean }) => {
-  const [user, setUser] = useState<UserProfile | null>(null);
-
-  useEffect(() => {
-    const unsubscribe = db.subscribeToUser(uid, (u) => {
-      setUser(u);
-    });
-    return () => unsubscribe();
-  }, [uid]);
-
-  if (!user) return <div className="w-10 h-10 bg-slate-200 rounded-full animate-pulse" />;
+  const [user, setUser] = useState<UserProfile | null | undefined>(undefined);
 
   const sizeClasses = {
     sm: "w-8 h-8",
@@ -99,6 +90,37 @@ const UserAvatar = ({ uid, size = "md", showName = false }: { uid: string, size?
     md: "w-2.5 h-2.5",
     lg: "w-3 h-3"
   };
+
+  useEffect(() => {
+    // If uid starts with "deleted_", it's a soft-deleted user
+    if (uid.startsWith('deleted_')) {
+      setUser(null);
+      return;
+    }
+
+    const unsubscribe = db.subscribeToUser(uid, (u) => {
+      setUser(u); // u is UserProfile | null
+    });
+    return () => unsubscribe();
+  }, [uid]);
+
+  if (user === undefined) return <div className="w-10 h-10 bg-slate-200 rounded-full animate-pulse" />;
+
+  // Deleted/Unknown User
+  if (user === null) {
+    return (
+      <div className="flex items-center gap-3">
+        <div className={`${sizeClasses[size]} rounded-full bg-slate-100 border border-slate-200 flex items-center justify-center shrink-0`}>
+          <Users size={16} className="text-slate-300" />
+        </div>
+        {showName && (
+          <div>
+            <div className="font-bold text-slate-400 text-sm italic">Former User</div>
+          </div>
+        )}
+      </div>
+    );
+  }
 
   return (
     <div className="flex items-center gap-3">
@@ -126,16 +148,32 @@ const UserAvatar = ({ uid, size = "md", showName = false }: { uid: string, size?
 
 // --- User Badge Component ---
 const UserBadge = ({ uid, onRemove, showRemove = false, onClick }: { uid: string, onRemove?: () => void, showRemove?: boolean, onClick?: () => void }) => {
-  const [user, setUser] = useState<UserProfile | null>(null);
+  const [user, setUser] = useState<UserProfile | null | undefined>(undefined);
 
   useEffect(() => {
+    if (uid.startsWith('deleted_')) {
+      setUser(null);
+      return;
+    }
+
     const unsubscribe = db.subscribeToUser(uid, (u) => {
       setUser(u);
     });
     return () => unsubscribe();
   }, [uid]);
 
-  if (!user) return null;
+  if (user === undefined) return null;
+
+  if (user === null) {
+    return (
+      <div className="flex items-center gap-2 px-2 py-1 rounded-full text-xs font-bold border bg-slate-100 text-slate-400 border-slate-200">
+        <div className="w-4 h-4 rounded-full bg-slate-300 flex items-center justify-center">
+          <span className="text-[8px] text-white">?</span>
+        </div>
+        <span className="italic">Former User</span>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -826,7 +864,20 @@ const UserListItem = ({ uid, isActive, onClick }: { uid: string, isActive: boole
     return () => unsubscribe();
   }, [uid]);
 
-  if (!user) return null;
+  if (user === undefined) return null; // Loading... or treat as null for list
+
+  if (user === null) {
+    return (
+      <div className={`p-4 flex items-center gap-3 cursor-not-allowed opacity-50 bg-slate-50`}>
+        <div className="w-10 h-10 rounded-full bg-slate-200 flex items-center justify-center">
+          <Users size={20} className="text-slate-400" />
+        </div>
+        <div>
+          <div className="font-bold text-slate-500 text-sm italic">Former User</div>
+        </div>
+      </div>
+    );
+  }
 
   return (
     <div
@@ -891,14 +942,17 @@ const NetworkingView: React.FC<{ currentUser: UserProfile, onMessage: (userId: s
 
 // --- Self-Updating Networking Card ---
 const NetworkingUserCard = ({ initialUser, onMessage, onProfileClick }: { initialUser: UserProfile, onMessage: (uid: string) => void, onProfileClick: (user: UserProfile) => void }) => {
-  const [user, setUser] = useState<UserProfile>(initialUser);
+  const [user, setUser] = useState<UserProfile | null>(initialUser);
 
   useEffect(() => {
     const unsubscribe = db.subscribeToUser(initialUser.uid, (u) => {
-      if (u) setUser(u);
+      // If user is deleted (null), we force state to null
+      setUser(u);
     });
     return () => unsubscribe();
   }, [initialUser.uid]);
+
+  if (!user) return null;
 
   return (
     <div
@@ -1173,6 +1227,7 @@ const UserDashboard: React.FC<{ currentUser: UserProfile, onProfileUpdate: (user
   );
 };
 
+// --- Admin Dashboard Component ---
 const AdminDashboard: React.FC<{ currentUser: UserProfile }> = ({ currentUser }) => {
   if (!currentUser) return null;
 
@@ -1264,6 +1319,37 @@ const AdminDashboard: React.FC<{ currentUser: UserProfile }> = ({ currentUser })
         return u;
       }));
       alert(`Failed to update user status.\n\nError: ${error.message || error}`);
+    }
+  };
+
+  const handleRemoveUser = async (uid: string) => {
+    // Prevent removing yourself
+    if (uid === currentUser.uid) {
+      alert("You cannot remove yourself!");
+      return;
+    }
+
+    const targetUser = allUsers.find(u => u.uid === uid);
+    if (!targetUser) return;
+
+    // HIERARCHY CHECK: Leads cannot remove Super Admins
+    if (currentUser.role === UserRole.LEAD && targetUser.role === UserRole.SUPER_ADMIN) {
+      alert("Action Denied: Platform Leads cannot remove Super Admins.");
+      return;
+    }
+
+    if (window.confirm(`Are you sure you want to PERMANENTLY REMOVE ${targetUser.name}? \n\nThis will delete their profile from the database. This action cannot be undone.`)) {
+      // Optimistic Update
+      setAllUsers(prev => prev.filter(u => u.uid !== uid));
+
+      try {
+        await db.adminDeleteUser(uid);
+      } catch (error: any) {
+        console.error("Deletion failed, reverting UI:", error);
+        // Revert fetch
+        loadData();
+        alert(`Failed to delete user.\n\nError: ${error.message || error}`);
+      }
     }
   };
 
@@ -1378,7 +1464,7 @@ const AdminDashboard: React.FC<{ currentUser: UserProfile }> = ({ currentUser })
             </thead>
             <tbody>
               {allUsers.map(user => (
-                <AdminUserRow key={user.uid} initialUser={user} onToggleBlock={handleToggleBlock} />
+                <AdminUserRow key={user.uid} initialUser={user} onToggleBlock={handleToggleBlock} onRemove={handleRemoveUser} />
               ))}
             </tbody>
           </table>
@@ -1389,12 +1475,17 @@ const AdminDashboard: React.FC<{ currentUser: UserProfile }> = ({ currentUser })
 };
 
 // --- Self-Updating Admin User Row ---
-const AdminUserRow = ({ initialUser, onToggleBlock }: { initialUser: UserProfile, onToggleBlock: (uid: string) => Promise<void> }) => {
+const AdminUserRow = ({ initialUser, onToggleBlock, onRemove }: { initialUser: UserProfile, onToggleBlock: (uid: string) => Promise<void>, onRemove: (uid: string) => Promise<void> }) => {
   const [user, setUser] = useState<UserProfile>(initialUser);
 
   useEffect(() => {
     const unsubscribe = db.subscribeToUser(initialUser.uid, (u) => {
-      if (u) setUser(u);
+      if (u) {
+        setUser(u);
+      } else {
+        // User deleted
+        setUser(prev => ({ ...prev, name: prev.name + " (Deleted)", blocked: true }));
+      }
     });
     return () => unsubscribe();
   }, [initialUser.uid]);
@@ -1427,6 +1518,13 @@ const AdminUserRow = ({ initialUser, onToggleBlock }: { initialUser: UserProfile
           className={`px-3 py-1 rounded-lg text-xs font-bold transition-colors ${user.blocked ? 'bg-red-50 text-red-600' : 'bg-slate-100 text-slate-600 hover:bg-slate-200'}`}
         >
           {user.blocked ? 'Blocked' : 'Active'}
+        </button>
+        <button
+          onClick={() => onRemove(user.uid)}
+          className="px-3 py-1 rounded-lg text-xs font-bold bg-white text-red-500 hover:bg-red-50 border border-red-100 flex items-center gap-1 transition-colors"
+          title="Permanently Remove User"
+        >
+          <Trash2 size={12} /> Remove
         </button>
       </td>
     </tr>
@@ -1806,14 +1904,14 @@ const App: React.FC = () => {
       }
     }
     else if (registrationRole === 'DEVELOPER') {
-      if (!formData.name || !formData.email || !formData.skills) return alert("Required: Name, Email, Skills");
+      if (!formData.name || !formData.email) return alert("Required: Name, Email");
       const user = await db.signupDeveloper({
         name: formData.name,
         email: formData.email,
         phone: formData.phone,
         password: formData.password,
         college: formData.college,
-        skills: formData.skills,
+        skills: formData.skills || "Not specified", // Default if missing
         githubUrl: formData.github,
         timeAvailability: formData.availability,
         experience: formData.experience

@@ -50,6 +50,44 @@ export const dbService = {
         await updateDoc(doc(db, 'users', uid), data);
     },
 
+    async deleteUser(uid: string) {
+        console.log(`[dbService] Starting safe deletion for user ${uid}...`);
+
+        // 1. Unlink authored posts
+        const authoredPostsQuery = query(collection(db, 'posts'), where('authorId', '==', uid));
+        const authoredPostsSnapshot = await getDocs(authoredPostsQuery);
+
+        // 2. Remove from teams
+        const teamPostsQuery = query(collection(db, 'posts'), where('team', 'array-contains', uid));
+        const teamPostsSnapshot = await getDocs(teamPostsQuery);
+
+        // Execute updates individually to avoid batch limits or complex transactions
+        // (Batch limit is 500, unlikely to hit here but safer to just loop for this prototype)
+
+        const updatePromises: Promise<any>[] = [];
+
+        // Anonymize Authored Posts
+        authoredPostsSnapshot.docs.forEach(docSnapshot => {
+            updatePromises.push(updateDoc(doc(db, 'posts', docSnapshot.id), {
+                authorId: `deleted_${uid}`,
+                authorName: 'Former User' // Optional: Cache name for display if we wanted, but "Former User" is fine
+            }));
+        });
+
+        // Remove from Teams
+        teamPostsSnapshot.docs.forEach(docSnapshot => {
+            const data = docSnapshot.data();
+            const newTeam = (data.team || []).filter((id: string) => id !== uid);
+            updatePromises.push(updateDoc(doc(db, 'posts', docSnapshot.id), { team: newTeam }));
+        });
+
+        await Promise.all(updatePromises);
+
+        // 3. Finally, delete the user profile
+        await deleteDoc(doc(db, 'users', uid));
+        console.log(`[dbService] User ${uid} deleted and content unlinked.`);
+    },
+
     async getAllUsers(): Promise<UserProfile[]> {
         const usersSnapshot = await getDocs(collection(db, 'users'));
         return usersSnapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));

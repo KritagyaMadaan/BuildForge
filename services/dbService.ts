@@ -13,7 +13,10 @@ import {
     serverTimestamp,
     Timestamp,
     onSnapshot,
-    or
+    or,
+    limit,
+    getCountFromServer,
+    writeBatch
 } from 'firebase/firestore';
 import { db } from './firebase';
 import { UserProfile, Post, Comment, Message, UserRole } from '../types';
@@ -94,13 +97,14 @@ export const dbService = {
     },
 
     async getDevelopers(): Promise<UserProfile[]> {
-        console.log("[dbService] Fetching developers using query...");
+        console.log("[dbService] Fetching developers using query (limit 20)...");
         try {
-            // Use query with where clauses to limit reads
+            // ALWAYS LIMIT collection reads
             const q = query(
                 collection(db, 'users'),
                 where('role', '==', UserRole.DEVELOPER),
-                where('blocked', '==', false)
+                where('blocked', '==', false),
+                limit(20)
             );
             const snapshot = await getDocs(q);
             const devs = snapshot.docs.map(doc => ({ uid: doc.id, ...doc.data() } as UserProfile));
@@ -174,23 +178,29 @@ export const dbService = {
     },
 
     async getPosts(type?: string, status?: string): Promise<Post[]> {
-        // Use targeted query to minimize Firestore reads
-        let q = query(collection(db, 'posts'));
-
-        const constraints = [];
+        // ALWAYS LIMIT fetch to 20 to prevent unbounded read spikes
+        const constraints: any[] = [limit(20)];
         if (type) constraints.push(where('type', '==', type));
         if (status) constraints.push(where('status', '==', status));
 
-        if (constraints.length > 0) {
+        // Default sort by timestamp if no specific constraints require it (Firestore needs index for composite)
+        // For simple collection reads, we can use orderBy
+        let q;
+        if (constraints.length === 1) { // Just limit
+            q = query(collection(db, 'posts'), orderBy('timestamp', 'desc'), limit(20));
+        } else {
             q = query(collection(db, 'posts'), ...constraints);
         }
 
         const snapshot = await getDocs(q);
-        const posts = snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-            timestamp: (doc.data().timestamp && typeof (doc.data().timestamp as any).toMillis === 'function') ? (doc.data().timestamp as Timestamp).toMillis() : Date.now()
-        } as Post));
+        const posts = snapshot.docs.map(doc => {
+            const data = doc.data() as any;
+            return {
+                id: doc.id,
+                ...data,
+                timestamp: (data.timestamp && typeof data.timestamp.toMillis === 'function') ? (data.timestamp as Timestamp).toMillis() : Date.now()
+            } as Post;
+        });
 
         // Sort in memory (or add orderBy to query if index exists)
         return posts.sort((a, b) => b.timestamp - a.timestamp);
@@ -214,13 +224,16 @@ export const dbService = {
     },
 
     async getUpdates(): Promise<Post[]> {
-        const q = query(collection(db, 'updates'), orderBy('timestamp', 'desc'));
+        const q = query(collection(db, 'updates'), orderBy('timestamp', 'desc'), limit(20));
         const snapshot = await getDocs(q);
-        return snapshot.docs.map(doc => ({
-            id: doc.id,
-            ...doc.data(),
-            timestamp: (doc.data().timestamp as Timestamp)?.toMillis() || Date.now()
-        } as Post));
+        return snapshot.docs.map(doc => {
+            const data = doc.data() as any;
+            return {
+                id: doc.id,
+                ...data,
+                timestamp: (data.timestamp as Timestamp)?.toMillis() || Date.now()
+            } as Post;
+        });
     },
 
     async getPost(postId: string): Promise<Post | null> {
@@ -301,60 +314,60 @@ export const dbService = {
     },
 
     async addComment(postId: string, comment: Comment) {
-        let postRef = doc(db, 'posts', postId);
-        let postDoc = await getDoc(postRef);
+        // SUBCOLLECTION: Move comments to nested collection to avoid document size bloat
+        const commentRef = collection(db, 'posts', postId, 'comments');
+        await addDoc(commentRef, {
+            ...comment,
+            timestamp: serverTimestamp() // Use server time for consistency
+        });
+    },
 
-        if (!postDoc.exists()) {
-            postRef = doc(db, 'updates', postId);
-            postDoc = await getDoc(postRef);
-        }
-
-        if (postDoc.exists()) {
-            const comments = postDoc.data().comments || [];
-            comments.push(comment);
-            await updateDoc(postRef, { comments });
-        }
+    async getComments(postId: string): Promise<Comment[]> {
+        const q = query(collection(db, 'posts', postId, 'comments'), orderBy('timestamp', 'desc'), limit(20));
+        const snapshot = await getDocs(q);
+        return snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as Comment));
     },
 
     async toggleLike(postId: string, userId: string) {
-        let postRef = doc(db, 'posts', postId);
-        let postDoc = await getDoc(postRef);
+        // SUBCOLLECTION: Use a doc in 'likes' subcollection as a marker
+        // This is 1 read to check, 1 write to toggle. Much cleaner than array filtering.
+        const likeRef = doc(db, 'posts', postId, 'likes', userId);
+        const likeDoc = await getDoc(likeRef);
 
-        if (!postDoc.exists()) {
-            postRef = doc(db, 'updates', postId);
-            postDoc = await getDoc(postRef);
+        if (likeDoc.exists()) {
+            await deleteDoc(likeRef);
+        } else {
+            await setDoc(likeRef, { timestamp: serverTimestamp() });
         }
+    },
 
-        if (postDoc.exists()) {
-            const data = postDoc.data();
-            const likedBy = data.likedBy || [];
-            let currentLikes = data.likes || 0;
+    async getLikesCount(postId: string): Promise<number> {
+        // PERF: getCountFromServer is 1/1000th the cost of reading documents
+        const coll = collection(db, 'posts', postId, 'likes');
+        const snapshot = await getCountFromServer(coll);
+        return snapshot.data().count;
+    },
 
-            if (likedBy.includes(userId)) {
-                // Unlike: Remove user from list and decrement count
-                const newLikedBy = likedBy.filter((id: string) => id !== userId);
-                await updateDoc(postRef, {
-                    likedBy: newLikedBy,
-                    likes: Math.max(0, currentLikes - 1)
-                });
-            } else {
-                // Like: Add user to list and increment count
-                likedBy.push(userId);
-                await updateDoc(postRef, {
-                    likedBy: likedBy,
-                    likes: currentLikes + 1
-                });
-            }
-        }
+    async hasLiked(postId: string, userId: string): Promise<boolean> {
+        const likeRef = doc(db, 'posts', postId, 'likes', userId);
+        const likeDoc = await getDoc(likeRef);
+        return likeDoc.exists();
     },
 
     // ===== MESSAGING =====
 
+    // Helper for messaging consistency
+    getConversationId(uid1: string, uid2: string) {
+        return [uid1, uid2].sort().join('_');
+    },
+
     async sendMessage(message: Omit<Message, 'id' | 'timestamp'>) {
         console.log("[dbService] Sending message:", message);
+        const convId = this.getConversationId(message.senderId, message.receiverId);
         const messagesRef = collection(db, 'messages');
         await addDoc(messagesRef, {
             ...message,
+            conversationId: convId,
             participants: [message.senderId, message.receiverId],
             timestamp: serverTimestamp(),
             read: false
@@ -362,35 +375,103 @@ export const dbService = {
     },
 
     async getMessages(userId1: string, userId2: string): Promise<Message[]> {
-        console.log(`[dbService] getMessages: ${userId1} <-> ${userId2}`);
+        console.log(`[dbService] getMessages: ${userId1} <-> ${userId2 || 'ALL'}`);
+
+        // CASE 1: Fetching specific conversation (userId2 provided)
+        if (userId2) {
+            const convId = this.getConversationId(userId1, userId2);
+
+            // OPTIMIZED: Try conversationId query first
+            let q = query(
+                collection(db, 'messages'),
+                where('conversationId', '==', convId),
+                orderBy('timestamp', 'asc'),
+                limit(30)
+            );
+
+            let snapshot = await getDocs(q);
+
+            // FALLBACK: If no results, try legacy OR query
+            if (snapshot.empty) {
+                console.log('[dbService] No messages with conversationId, trying legacy query...');
+                q = query(
+                    collection(db, 'messages'),
+                    or(
+                        where('senderId', '==', userId1),
+                        where('receiverId', '==', userId1)
+                    ),
+                    limit(50)
+                );
+                snapshot = await getDocs(q);
+
+                // LAZY MIGRATION for specific conversation
+                if (!snapshot.empty) {
+                    const batch = writeBatch(db);
+                    let migrationCount = 0;
+                    snapshot.docs.forEach(docSnap => {
+                        const data = docSnap.data();
+                        // Only migrate messages for THIS conversation to be safe
+                        if (!data.conversationId &&
+                            ((data.senderId === userId1 && data.receiverId === userId2) ||
+                                (data.senderId === userId2 && data.receiverId === userId1))) {
+                            const docConvId = this.getConversationId(data.senderId, data.receiverId);
+                            batch.update(docSnap.ref, { conversationId: docConvId });
+                            migrationCount++;
+                        }
+                    });
+                    if (migrationCount > 0) {
+                        try { await batch.commit(); } catch (e) { console.error("Migration failed", e); }
+                    }
+                }
+            }
+
+            return snapshot.docs
+                .map(doc => ({ id: doc.id, ...doc.data(), timestamp: (doc.data().timestamp as Timestamp)?.toMillis() || Date.now() } as Message))
+                .filter(m => (m.senderId === userId1 && m.receiverId === userId2) || (m.senderId === userId2 && m.receiverId === userId1))
+                .sort((a, b) => a.timestamp - b.timestamp);
+        }
+
+        // CASE 2: Fetching ALL messages for user (userId2 missing) - Used for Conversation List
+        // We cannot use conversationId here easily. We must use a broad query.
+        console.log('[dbService] Fetching ALL messages for user to build conversation list');
         const q = query(
             collection(db, 'messages'),
             or(
                 where('senderId', '==', userId1),
                 where('receiverId', '==', userId1)
-            )
+            ),
+            orderBy('timestamp', 'desc'), // Get most recent first
+            limit(100) // Limit to 100 most recent to build the list
         );
 
-        const snapshot = await getDocs(q);
-        console.log(`[dbService] Fetched ${snapshot.docs.length} total messages for ${userId1}`);
+        let snapshot;
+        try {
+            snapshot = await getDocs(q);
+        } catch (e) {
+            console.warn("[dbService] Index missing for OR+OrderBy? Falling back to unsorted query.");
+            // Fallback if index missing: fetch without sort, sort in memory
+            const q2 = query(
+                collection(db, 'messages'),
+                or(
+                    where('senderId', '==', userId1),
+                    where('receiverId', '==', userId1)
+                ),
+                limit(100)
+            );
+            snapshot = await getDocs(q2);
+        }
 
         return snapshot.docs
-            .map(doc => ({
-                id: doc.id,
-                ...doc.data(),
-                timestamp: (doc.data().timestamp as Timestamp)?.toMillis() || Date.now()
-            } as Message))
-            .filter(m => {
-                if (!userId2) return true;
-                return (m.senderId === userId1 && m.receiverId === userId2) ||
-                    (m.senderId === userId2 && m.receiverId === userId1);
-            })
+            .map(doc => ({ id: doc.id, ...doc.data(), timestamp: (doc.data().timestamp as Timestamp)?.toMillis() || Date.now() } as Message))
             .sort((a, b) => a.timestamp - b.timestamp);
     },
 
     subscribeToMessages(userId1: string, userId2: string, callback: (messages: Message[]) => void) {
         if (!userId2) return () => { };
-        console.log(`[dbService] subscribeToMessages: ${userId1} <-> ${userId2}`);
+        // CRITICAL FIX: Real-time listener must be synchronous.
+        // We use a broader OR query to ensure we catch ALL messages (legacy + new).
+        // Optimizing this strictly with conversationId requires a guaranteed migration first.
+        // For now, correct behavior > perfection.
 
         const q = query(
             collection(db, 'messages'),
@@ -398,22 +479,43 @@ export const dbService = {
                 where('senderId', '==', userId1),
                 where('receiverId', '==', userId1)
             )
+            // No limit here to ensure we don't miss the specific conversation if user has many others
+            // No orderBy ensures we don't hit missing index issues
         );
 
         return onSnapshot(q, (snapshot) => {
-            console.log(`[dbService] Snapshot update: ${snapshot.docs.length} messages for ${userId1}`);
+            // Lazy migration check (non-blocking)
+            // We verify if data is migrated, if not, we trigger a background update
+            snapshot.docs.forEach(async (docSnap) => {
+                const data = docSnap.data();
+                if (!data.conversationId) {
+                    const docConvId = [data.senderId, data.receiverId].sort().join('_');
+                    try {
+                        // Use dbService directly to avoid circular dependency if using 'this' blindly
+                        // But here we are inside the object.
+                        await updateDoc(docSnap.ref, { conversationId: docConvId });
+                    } catch (e) {
+                        // Ignore update errors (permissions etc)
+                    }
+                }
+            });
+
             const messages = snapshot.docs
-                .map(doc => ({
-                    id: doc.id,
-                    ...doc.data(),
-                    timestamp: (doc.data().timestamp as Timestamp)?.toMillis() || Date.now()
-                } as Message))
+                .map(doc => {
+                    const data = doc.data() as any;
+                    return {
+                        id: doc.id,
+                        ...data,
+                        timestamp: (data.timestamp as Timestamp)?.toMillis() || Date.now()
+                    } as Message;
+                })
                 .filter(m => {
-                    if (!userId2) return true;
+                    // Client-side filtering for the specific chat partner
                     return (m.senderId === userId1 && m.receiverId === userId2) ||
                         (m.senderId === userId2 && m.receiverId === userId1);
                 })
                 .sort((a, b) => a.timestamp - b.timestamp);
+
             callback(messages);
         }, (err) => {
             console.error("[dbService] Message Subscription Error:", err);

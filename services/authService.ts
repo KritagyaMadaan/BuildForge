@@ -19,6 +19,42 @@ export const authService = {
             const userCredential = await createUserWithEmailAndPassword(auth, email, password);
             const user = userCredential.user;
 
+            return await this._createUserProfile(user, email, userData);
+        } catch (error: any) {
+            // HANDLE ZOMBIE USERS (Deleted Profile but Auth Exists)
+            if (error.code === 'auth/email-already-in-use') {
+                console.log("Email in use, checking for Zombie User (Deleted Profile)...");
+                try {
+                    // 1. Try to sign in with the provided credentials
+                    const credential = await signInWithEmailAndPassword(auth, email, password);
+                    const user = credential.user;
+
+                    // 2. Check if profile exists
+                    const userDoc = await getDoc(doc(db, 'users', user.uid));
+
+                    if (!userDoc.exists()) {
+                        console.log("Zombie User Detected: Auth exists but Profile is missing. Resurrecting...");
+                        // 3. Profile is missing! This is a "Removed" user trying to come back.
+                        // We strictly allow this as a "New Registration" reusing the UID.
+                        return await this._createUserProfile(user, email, userData);
+                    } else {
+                        // Profile exists, so this is just a regular "Email Taken" error
+                        return { success: false, error: "Email is already in use by an active account." };
+                    }
+                } catch (signInError: any) {
+                    // Wrong password or other sign-in error implies it's not the owner trying to re-register
+                    console.error("Zombie Check Failed:", signInError);
+                    return { success: false, error: "Email already in use. If this is you, please check your password." };
+                }
+            }
+
+            return { success: false, error: error.message };
+        }
+    },
+
+    // Helper to create profile (Shared logic)
+    async _createUserProfile(user: User, email: string, userData: Partial<UserProfile>) {
+        try {
             // Clean undefined values from userData to prevent Firestore crashes
             const cleanUserData = Object.fromEntries(
                 Object.entries(userData).filter(([_, v]) => v !== undefined)
@@ -38,8 +74,8 @@ export const authService = {
             await setDoc(doc(db, 'users', user.uid), userProfile);
 
             return { success: true, user: userProfile };
-        } catch (error: any) {
-            return { success: false, error: error.message };
+        } catch (e: any) {
+            return { success: false, error: e.message };
         }
     },
 

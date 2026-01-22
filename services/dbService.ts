@@ -351,6 +351,7 @@ export const dbService = {
     // ===== MESSAGING =====
 
     async sendMessage(message: Omit<Message, 'id' | 'timestamp'>) {
+        console.log("[dbService] Sending message:", message);
         const messagesRef = collection(db, 'messages');
         await addDoc(messagesRef, {
             ...message,
@@ -361,13 +362,18 @@ export const dbService = {
     },
 
     async getMessages(userId1: string, userId2: string): Promise<Message[]> {
+        console.log(`[dbService] getMessages: ${userId1} <-> ${userId2}`);
         const q = query(
             collection(db, 'messages'),
-            where('participants', 'array-contains', userId1),
-            orderBy('timestamp', 'asc')
+            or(
+                where('senderId', '==', userId1),
+                where('receiverId', '==', userId1)
+            )
         );
 
         const snapshot = await getDocs(q);
+        console.log(`[dbService] Fetched ${snapshot.docs.length} total messages for ${userId1}`);
+
         return snapshot.docs
             .map(doc => ({
                 id: doc.id,
@@ -378,19 +384,24 @@ export const dbService = {
                 if (!userId2) return true;
                 return (m.senderId === userId1 && m.receiverId === userId2) ||
                     (m.senderId === userId2 && m.receiverId === userId1);
-            });
+            })
+            .sort((a, b) => a.timestamp - b.timestamp);
     },
 
     subscribeToMessages(userId1: string, userId2: string, callback: (messages: Message[]) => void) {
         if (!userId2) return () => { };
+        console.log(`[dbService] subscribeToMessages: ${userId1} <-> ${userId2}`);
 
         const q = query(
             collection(db, 'messages'),
-            where('participants', 'array-contains', userId1),
-            orderBy('timestamp', 'asc')
+            or(
+                where('senderId', '==', userId1),
+                where('receiverId', '==', userId1)
+            )
         );
 
         return onSnapshot(q, (snapshot) => {
+            console.log(`[dbService] Snapshot update: ${snapshot.docs.length} messages for ${userId1}`);
             const messages = snapshot.docs
                 .map(doc => ({
                     id: doc.id,
@@ -401,8 +412,11 @@ export const dbService = {
                     if (!userId2) return true;
                     return (m.senderId === userId1 && m.receiverId === userId2) ||
                         (m.senderId === userId2 && m.receiverId === userId1);
-                });
+                })
+                .sort((a, b) => a.timestamp - b.timestamp);
             callback(messages);
+        }, (err) => {
+            console.error("[dbService] Message Subscription Error:", err);
         });
     }
 };

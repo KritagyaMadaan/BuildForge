@@ -452,15 +452,35 @@ const InstallPromptPopup: React.FC = () => {
 // --- Components ---
 
 const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () => void, viewMode?: 'DASHBOARD' | 'MARKET' | 'SHOWCASE', developers?: UserProfile[], onRefreshDevelopers?: () => void, onSubmission?: (type: 'UPDATE' | 'FINAL_PROJECT', postId?: string) => void, onProfileClick?: (uid: string) => void }> = ({ post, currentUser, onUpdate, viewMode = 'DASHBOARD', developers = [], onRefreshDevelopers, onSubmission, onProfileClick }) => {
-  const [isLiked, setIsLiked] = useState(post.likedBy?.includes(currentUser.uid) || false);
+  const [isLiked, setIsLiked] = useState(false);
+  const [likesCount, setLikesCount] = useState(0);
+  const [comments, setComments] = useState<Comment[]>([]);
   const [showComments, setShowComments] = useState(false);
   const [commentText, setCommentText] = useState('');
   const [showAssignPanel, setShowAssignPanel] = useState(false); // For managing teams
   const [showArchitecture, setShowArchitecture] = useState(false);
 
+  // OPTIMIZED: Fetch likes and check "isLiked" once on mount
   useEffect(() => {
-    setIsLiked(post.likedBy?.includes(currentUser.uid) || false);
-  }, [post.likedBy, currentUser.uid]);
+    const fetchLikeData = async () => {
+      const count = await db.getLikesCount(post.id);
+      const hasLiked = await db.hasLiked(post.id, currentUser.uid);
+      setLikesCount(count);
+      setIsLiked(hasLiked);
+    };
+    fetchLikeData();
+  }, [post.id, currentUser.uid]);
+
+  // OPTIMIZED: Fetch comments only when panel is opened
+  useEffect(() => {
+    if (showComments) {
+      const fetchComments = async () => {
+        const results = await db.getComments(post.id);
+        setComments(results);
+      };
+      fetchComments();
+    }
+  }, [showComments, post.id]);
 
   // Logic to determine if user can manage this project (ONLY Lead and Super Admin)
   const canManage = currentUser.role === UserRole.LEAD || currentUser.role === UserRole.SUPER_ADMIN;
@@ -469,14 +489,16 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
 
   const handleLike = async () => {
     await db.toggleLike(post.id, currentUser.uid);
-    await onUpdate();
+    // Optimistic toggle
+    setIsLiked(!isLiked);
+    setLikesCount(prev => isLiked ? prev - 1 : prev + 1);
   };
 
   const handleComment = async () => {
     if (!commentText.trim()) return;
-    await db.addComment(post.id, currentUser.uid, currentUser.name, commentText);
+    const newComment = await db.addComment(post.id, currentUser.uid, currentUser.name, commentText);
     setCommentText('');
-    await onUpdate();
+    setComments(prev => [newComment, ...prev]);
   };
 
   const handleShare = async () => {
@@ -806,10 +828,10 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
         <>
           <div className="flex items-center gap-6 pt-4 border-t border-slate-50">
             <button onClick={handleLike} className={`flex items-center gap-2 transition-colors font-bold text-sm group-hover:animate-bounce ${isLiked ? 'text-red-500' : 'text-slate-400 hover:text-red-500'}`}>
-              <Heart size={18} className={post.likes > 0 || isLiked ? "fill-current" : ""} /> {post.likes}
+              <Heart size={18} className={likesCount > 0 || isLiked ? "fill-current" : ""} /> {likesCount}
             </button>
             <button onClick={() => setShowComments(!showComments)} className="flex items-center gap-2 text-slate-400 hover:text-brand-blue transition-colors font-bold text-sm">
-              <MessageCircle size={18} /> {post.comments.length} Comments
+              <MessageCircle size={18} /> {comments.length} Comments
             </button>
             {isIdea && onSubmission && currentUser.role === UserRole.DEVELOPER && post.team?.includes(currentUser.uid) && (
               <button onClick={() => onSubmission('UPDATE', post.id)} className="flex items-center gap-2 text-slate-400 hover:text-green-600 transition-colors font-bold text-sm">
@@ -824,8 +846,8 @@ const PostCard: React.FC<{ post: Post, currentUser: UserProfile, onUpdate: () =>
           {showComments && (
             <div className="mt-4 pt-4 border-t border-slate-50 bg-slate-50/50 -mx-6 px-6 pb-2">
               <div className="space-y-3 mb-4 max-h-60 overflow-y-auto no-scrollbar">
-                {post.comments.length === 0 && <p className="text-xs text-slate-400 italic">No feedback yet. Be the first!</p>}
-                {post.comments.map(comment => (
+                {comments.length === 0 && <p className="text-xs text-slate-400 italic">No feedback yet. Be the first!</p>}
+                {comments.map(comment => (
                   <div key={comment.id} className="bg-white p-3 rounded-xl text-sm shadow-sm">
                     <div className="flex justify-between mb-1">
                       <span className="font-bold text-slate-700">{comment.userName}</span>
@@ -1009,8 +1031,8 @@ const MessagesView: React.FC<{ currentUser: UserProfile, initialChatId?: string 
 
   useEffect(() => {
     const loadConversations = async () => {
+      // PERF: Direct fetch of relevant user IDs involved in conversations
       const convos = await db.getConversations(currentUser.uid);
-      // Removed strict connectedUsers filter to ensure all active chats are visible
       setConversations(convos);
     };
     loadConversations();
@@ -1637,8 +1659,9 @@ const App: React.FC = () => {
     // Initial call
     updateHeartbeat();
 
-    // Interval - Change to 60 seconds to save Firestore writes/reads
-    const interval = setInterval(updateHeartbeat, 60 * 1000);
+    // Interval - Change to 5 minutes (300s) to save Firestore writes significantly
+    // Spark plan has 20k writes/day, 60s heartbeat with 10 users = 14,400 writes!
+    const interval = setInterval(updateHeartbeat, 300 * 1000);
     return () => clearInterval(interval);
   }, [currentUser?.uid]);
 
@@ -1702,7 +1725,7 @@ const App: React.FC = () => {
       }
     };
     checkDeepLink();
-  }, [currentUser]); // Retry when user logs in
+  }, [currentUser?.uid, deepLinkedPost]); // Only run when user ID changes or post is found/cleared
 
   const closeDeepLink = () => {
     setDeepLinkedPost(null);
@@ -1731,7 +1754,7 @@ const App: React.FC = () => {
   };
 
   // UPDATED REFRESH POSTS WITH STRICT FILTERING ARGS
-  const refreshPosts = async () => {
+  const refreshPosts = React.useCallback(async () => {
     // Determine context for data fetching
     const role = currentUser?.role;
     const uid = currentUser?.uid;
@@ -1814,14 +1837,14 @@ const App: React.FC = () => {
         setPosts([]);
       }
     }
-  }
+  }, [currentUser?.role, currentUser?.uid, currentView]);
 
 
   useEffect(() => {
     // Prevent UI flash/glitch by clearing posts immediately when view changes
     setPosts([]);
     refreshPosts();
-  }, [currentView, currentUser?.uid, currentUser?.role]);
+  }, [refreshPosts]); // Now only runs when role/uid/view actually changes via useCallback memoization
 
   const handleContactSubmit = async (e: React.FormEvent) => {
     e.preventDefault();

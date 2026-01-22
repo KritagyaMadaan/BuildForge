@@ -1010,12 +1010,8 @@ const MessagesView: React.FC<{ currentUser: UserProfile, initialChatId?: string 
   useEffect(() => {
     const loadConversations = async () => {
       const convos = await db.getConversations(currentUser.uid);
-      const connectedUsers = await db.getConnectedUsers(currentUser);
-      const connectedIds = new Set(connectedUsers.map(u => u.uid));
-
-      // Filter conversations to only show currently connected users (Active Projects)
-      const validConvos = convos.filter(uid => connectedIds.has(uid));
-      setConversations(validConvos);
+      // Removed strict connectedUsers filter to ensure all active chats are visible
+      setConversations(convos);
     };
     loadConversations();
   }, [currentUser?.uid]);
@@ -1723,7 +1719,7 @@ const App: React.FC = () => {
     name: '', email: '', phone: '',
     startupName: '', stage: '', description: '', techHelp: '', budget: '', timeline: '',
     college: '', skills: '', github: '', availability: '', experience: '',
-    password: '', accessKey: ''
+    password: '', accessKey: '', resumeUrl: ''
   });
   const [posts, setPosts] = useState<Post[]>([]);
   const [contactForm, setContactForm] = useState({ name: '', email: '', message: '' });
@@ -1879,6 +1875,35 @@ const App: React.FC = () => {
     }
   };
 
+  // URL Validation Helper
+  const validateUrlAccessible = async (url: string): Promise<{ valid: boolean, message?: string }> => {
+    // Basic URL format validation
+    const urlPattern = /^https?:\/\/.+/i;
+    if (!url || !urlPattern.test(url)) {
+      return { valid: false, message: "Invalid URL format. Must start with http:// or https://" };
+    }
+
+    try {
+      // Attempt to fetch with no-cors mode to check reachability
+      // This won't give us the content, but will fail if domain doesn't exist
+      const controller = new AbortController();
+      const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
+
+      await fetch(url, {
+        mode: 'no-cors',
+        signal: controller.signal
+      });
+
+      clearTimeout(timeoutId);
+      return { valid: true };
+    } catch (error: any) {
+      if (error.name === 'AbortError') {
+        return { valid: false, message: "URL took too long to respond. Please check if the link is correct." };
+      }
+      return { valid: false, message: "Unable to reach this URL. Please verify the link is correct and accessible." };
+    }
+  };
+
   // Handle Registration / Login Submissions
   const handleSubmitAuth = async () => {
     if (registrationRole === 'FOUNDER') {
@@ -1905,6 +1930,16 @@ const App: React.FC = () => {
     }
     else if (registrationRole === 'DEVELOPER') {
       if (!formData.name || !formData.email) return alert("Required: Name, Email");
+
+      // Validate Resume URL if provided (MANDATORY - blocks submission)
+      if (formData.resumeUrl) {
+        const urlCheck = await validateUrlAccessible(formData.resumeUrl);
+        if (!urlCheck.valid) {
+          alert(`Resume URL Error: ${urlCheck.message}\n\nPlease fix the URL before submitting.`);
+          return;
+        }
+      }
+
       const user = await db.signupDeveloper({
         name: formData.name,
         email: formData.email,
@@ -1914,7 +1949,8 @@ const App: React.FC = () => {
         skills: formData.skills || "Not specified", // Default if missing
         githubUrl: formData.github,
         timeAvailability: formData.availability,
-        experience: formData.experience
+        experience: formData.experience,
+        resumeUrl: formData.resumeUrl
       } as any);
       if (user) {
         setCurrentUser(user);
@@ -2019,6 +2055,12 @@ const App: React.FC = () => {
 
       const schemaImage = (form.elements.namedItem('schemaImage') as HTMLInputElement)?.value;
       if (schemaImage && schemaImage.trim()) {
+        // Validate documentation URL (MANDATORY - blocks submission)
+        const docCheck = await validateUrlAccessible(schemaImage.trim());
+        if (!docCheck.valid) {
+          alert(`Documentation URL Error: ${docCheck.message}\n\nPlease fix the URL before submitting.`);
+          return;
+        }
         jobData.schemaImage = schemaImage.trim();
       }
     }
@@ -2056,6 +2098,23 @@ const App: React.FC = () => {
         // UPDATE EXISTING POST for Final Project
         const githubUrl = (form.elements.namedItem('githubUrl') as HTMLInputElement)?.value;
         const liveDemoUrl = (form.elements.namedItem('liveDemoUrl') as HTMLInputElement)?.value;
+
+        // Validate URLs before submission (MANDATORY - blocks submission)
+        if (githubUrl) {
+          const githubCheck = await validateUrlAccessible(githubUrl);
+          if (!githubCheck.valid) {
+            alert(`GitHub URL Error: ${githubCheck.message}\n\nPlease fix the URL before submitting.`);
+            return;
+          }
+        }
+
+        if (liveDemoUrl) {
+          const demoCheck = await validateUrlAccessible(liveDemoUrl);
+          if (!demoCheck.valid) {
+            alert(`Demo URL Error: ${demoCheck.message}\n\nPlease fix the URL before submitting.`);
+            return;
+          }
+        }
 
         await db.updatePost(submissionTargetPostId, {
           type: 'DELIVERY',

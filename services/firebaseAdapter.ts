@@ -4,6 +4,23 @@ import { authService } from './authService';
 import { dbService } from './dbService';
 import { UserProfile, Post, UserRole, Comment, Message } from '../types';
 
+// Client-side caching to reduce Firestore reads significantly
+const cache = {
+    users: new Map<string, { data: UserProfile; ts: number }>(),
+    lists: new Map<string, { data: any; ts: number }>(),
+    TTL: 60000 * 5 // 5 minutes cache for static-ish data
+};
+
+const getCached = (type: 'users' | 'lists', key: string) => {
+    const entry = cache[type].get(key);
+    if (entry && (Date.now() - entry.ts < cache.TTL)) return entry.data;
+    return null;
+};
+
+const setCache = (type: 'users' | 'lists', key: string, data: any) => {
+    cache[type].set(key, { data, ts: Date.now() });
+};
+
 export const db = {
     // ===== AUTHENTICATION =====
 
@@ -178,7 +195,12 @@ export const db = {
     },
 
     getUser: async (uid: string): Promise<UserProfile | null> => {
-        return await dbService.getUser(uid);
+        const cached = getCached('users', uid);
+        if (cached) return cached;
+
+        const user = await dbService.getUser(uid);
+        if (user) setCache('users', uid, user);
+        return user;
     },
 
     subscribeToUser: (uid: string, callback: (user: UserProfile | null) => void) => {
@@ -260,7 +282,11 @@ export const db = {
     },
 
     getUserById: async (uid: string): Promise<UserProfile | undefined> => {
+        const cached = getCached('users', uid);
+        if (cached) return cached;
+
         const user = await dbService.getUser(uid);
+        if (user) setCache('users', uid, user);
         return user || undefined;
     },
 
@@ -345,7 +371,16 @@ export const db = {
     },
 
     toggleLike: async (postId: string, userId: string): Promise<void> => {
+        // Optimized: dbService now handles marker doc in 'likes' subcollection
         await dbService.toggleLike(postId, userId);
+    },
+
+    getLikesCount: async (postId: string): Promise<number> => {
+        return await dbService.getLikesCount(postId);
+    },
+
+    hasLiked: async (postId: string, userId: string): Promise<boolean> => {
+        return await dbService.hasLiked(postId, userId);
     },
 
     applyToProject: async (postId: string, userId: string): Promise<boolean> => {
@@ -403,6 +438,16 @@ export const db = {
         }
     },
 
+    getComments: async (postId: string): Promise<Comment[]> => {
+        const cacheKey = `comments_${postId}`;
+        const cached = getCached('lists', cacheKey);
+        if (cached) return cached;
+
+        const comments = await dbService.getComments(postId);
+        setCache('lists', cacheKey, comments);
+        return comments;
+    },
+
     addComment: async (postId: string, userId: string, userName: string, text: string): Promise<Comment> => {
         const comment: Comment = {
             id: `c_${Date.now()}`,
@@ -412,6 +457,8 @@ export const db = {
             timestamp: Date.now()
         };
         await dbService.addComment(postId, comment);
+        // Invalidate comments cache for this post
+        cache.lists.delete(`comments_${postId}`);
         return comment;
     },
 

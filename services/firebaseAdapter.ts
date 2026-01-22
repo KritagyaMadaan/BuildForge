@@ -212,6 +212,11 @@ export const db = {
         return undefined;
     },
 
+    adminDeleteUser: async (uid: string): Promise<void> => {
+        console.log("adminDeleteUser called for:", uid);
+        await dbService.deleteUser(uid);
+    },
+
     getConnectedUsers: async (currentUser: UserProfile): Promise<UserProfile[]> => {
         // RESTRICTION: Founders and Developers can ONLY see Leads, Super Admins, AND their Team Members
         if (currentUser.role === UserRole.FOUNDER || currentUser.role === UserRole.DEVELOPER) {

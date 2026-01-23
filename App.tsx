@@ -1900,15 +1900,15 @@ const App: React.FC = () => {
 
   // URL Validation Helper
   const validateUrlAccessible = async (url: string): Promise<{ valid: boolean, message?: string }> => {
-    // Basic URL format validation
-    const urlPattern = /^https?:\/\/.+/i;
+    // Stricter URL format validation: Protocol + Domain (must have at least one dot) + Path
+    const urlPattern = /^https?:\/\/[a-zA-Z0-9-]+\.[a-zA-Z0-9-.]+[^\s]*$/i;
+
     if (!url || !urlPattern.test(url)) {
-      return { valid: false, message: "Invalid URL format. Must start with http:// or https://" };
+      return { valid: false, message: "Invalid URL format. Must start with http:// or https:// and contain a valid domain (e.g., .com)." };
     }
 
     try {
       // Attempt to fetch with no-cors mode to check reachability
-      // This won't give us the content, but will fail if domain doesn't exist
       const controller = new AbortController();
       const timeoutId = setTimeout(() => controller.abort(), 5000); // 5 second timeout
 
@@ -2616,6 +2616,14 @@ const App: React.FC = () => {
                           alert("Resume URL is compulsory for developers!");
                           return;
                         }
+
+                        // Added Validation for Google Signup
+                        const urlCheck = await validateUrlAccessible(googleDeveloperResume);
+                        if (!urlCheck.valid) {
+                          alert(`Resume URL Error: ${urlCheck.message}\n\nPlease fix the URL before submitting.`);
+                          return;
+                        }
+
                         const result = await db.completeGoogleSignup(pendingGoogleUser!!, UserRole.DEVELOPER, { resumeUrl: googleDeveloperResume });
                         if (result.user) {
                           setCurrentUser(result.user);
